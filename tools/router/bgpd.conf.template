@@ -1,0 +1,11 @@
+!
+hostname rpki-validator
+password zebra
+!
+!
+rpki
+ rpki polling_period 300
+ rpki cache __PYRTR_HOST__ __PYRTR_PORT__ preference 1
+ rpki retry_interval 30
+exit
+!

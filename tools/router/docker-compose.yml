@@ -1,0 +1,13 @@
+services:
+  frr:
+    image: frrouting/frr:v8.4.0
+    environment:
+      - PYRTR_HOST=${PYRTR_HOST}
+      - PYRTR_PORT=${PYRTR_PORT}
+    volumes:
+      - ./bgpd.conf.template:/bgpd.conf.template:ro
+      - ./start.sh:/start.sh:ro
+    command:
+      - /start.sh
+    ports:
+      - 127.0.0.1:23:8023
