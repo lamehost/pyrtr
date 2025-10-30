@@ -5,7 +5,6 @@ Main entrypoint for the package
 import asyncio
 import logging
 import os
-import random
 
 from .server import rtr_server
 
@@ -30,15 +29,13 @@ def main():
 
     # Start the server
     host = os.environ.get("PYRTR_HOST", "127.0.0.1")
-    port = os.environ.get("PYRTR_PORT", 8323)
-
-    session = random.randrange(0, 65535)
+    port = int(os.environ.get("PYRTR_PORT", 8323))
 
     refresh = int(os.environ.get("PYRTR_REFRESH", 3600))
     retry = int(os.environ.get("PYRTR_RETRY", 3600))
     expire = int(os.environ.get("PYRTR_EXPIRE", 3600))
 
-    asyncio.run(rtr_server(host, port, session, refresh=refresh, retry=retry, expire=expire))
+    asyncio.run(rtr_server(host, port, refresh=refresh, retry=retry, expire=expire))
 
 
 if __name__ == "__main__":

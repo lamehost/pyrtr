@@ -4,6 +4,7 @@ Local async RTR server
 
 import asyncio
 import logging
+import random
 
 from .rtr import Cache
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 async def rtr_server(
-    host: str, port: int, session: int, *, refresh: int = 3600, expire: int = 600, retry: int = 7200
+    host: str, port: int, *, refresh: int = 3600, expire: int = 600, retry: int = 7200
 ):
     """
     Starts a local async RTR server and binds it to the specified host and port
@@ -22,8 +23,6 @@ async def rtr_server(
         The host to bind to
     port: int
         The TCP port to bind to
-    session: int
-        The RTR session ID
     refresh: int
         Refresh Interval in seconds. Default: 3600
     retry: int
@@ -31,6 +30,8 @@ async def rtr_server(
     expire: int
         Expire Interval in seconds: Expire: 7200
     """
+    session = random.randrange(0, 65535)
+
     cache = Cache(session, refresh=refresh, retry=retry, expire=expire)
 
     # Initialize server
