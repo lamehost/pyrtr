@@ -24,7 +24,7 @@ class ErrorReport(TypedDict):
     text: str | None
 
 
-def serialize(error: int, pdu: bytes, *, text: bytes = None) -> bytes:
+def serialize(error: int, pdu: bytes, *, text: bytes | None = None) -> bytes:
     """
     Serializes the PDU
 
@@ -66,7 +66,7 @@ def serialize(error: int, pdu: bytes, *, text: bytes = None) -> bytes:
         length,
         len(pdu),
         pdu,
-        len(text),
+        0,
     )
 
 
