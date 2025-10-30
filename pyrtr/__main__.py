@@ -4,9 +4,9 @@ Main entrypoint for the package
 
 import asyncio
 import logging
-import os
 
 from .server import rtr_server
+from .settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +15,10 @@ def main():
     """
     Initializes logging and starts the server
     """
+    settings = Settings()
+
     # Initialize logging
-    loglevel_str = os.environ.get("PYRTR_LOGLEVEL", "INFO")
-    loglevel = getattr(logging, loglevel_str)
+    loglevel = getattr(logging, settings.LOGLEVEL)
 
     logging.basicConfig(
         format="%(asctime)s %(levelname)-8s %(message)s",
@@ -25,17 +26,18 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    logger.info("Loglevel set to: %s", loglevel_str)
+    logger.info("Loglevel set to: %s", settings.LOGLEVEL)
 
     # Start the server
-    host = os.environ.get("PYRTR_HOST", "127.0.0.1")
-    port = int(os.environ.get("PYRTR_PORT", 8323))
-
-    refresh = int(os.environ.get("PYRTR_REFRESH", 3600))
-    retry = int(os.environ.get("PYRTR_RETRY", 3600))
-    expire = int(os.environ.get("PYRTR_EXPIRE", 3600))
-
-    asyncio.run(rtr_server(host, port, refresh=refresh, retry=retry, expire=expire))
+    asyncio.run(
+        rtr_server(
+            str(settings.HOST),
+            settings.PORT,
+            refresh=settings.REFRESH,
+            retry=settings.RETRY,
+            expire=settings.EXPIRE,
+        )
+    )
 
 
 if __name__ == "__main__":
