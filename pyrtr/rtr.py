@@ -6,7 +6,8 @@ import asyncio
 import logging
 import struct
 from abc import ABC
-from typing import TypedDict
+from types import ModuleType
+from typing import Any, TypedDict
 
 from .pdu import (
     cache_reset,
@@ -70,6 +71,7 @@ class Speaker(ABC):
 
     reader: asyncio.streams.StreamReader
     writer: asyncio.streams.StreamWriter
+    client: str
 
     def __init__(self, session: int):
         self.session = session
@@ -99,7 +101,7 @@ class Speaker(ABC):
             },
         )
 
-    async def drain(self):
+    async def drain(self) -> None:
         """
         Blocks until the asyncio stream writer buffer is transmitted
         """
@@ -120,18 +122,41 @@ class Speaker(ABC):
         """
         return await self.reader.read(length)
 
-    def write(self, buffer: bytes):
+    def write(self, pdu_module: ModuleType, data: dict[str, Any] | None = None) -> None:
         """
         Writes to the asyncio stream writer
 
         Arguments:
         ----------
-        buffer: bytes
-            Data to be sent to the asyncio stream writer
+        pdu_module: ModuleType
+            The PDU module used to serialize the data
+        data: dict[str, Any] | None
+            The data to serialize. Default: None
         """
+
+        data = data or {}
+
+        match pdu_module.TYPE:
+            case serial_query.TYPE:
+                logger.info("Serial query PDU sent to %s", self.client)
+            case reset_query.TYPE:
+                logger.info("Reset query PDU sent to %s", self.client)
+            case cache_response.TYPE:
+                logger.info("Cache response PDU sent to %s", self.client)
+            case end_of_data.TYPE:
+                logger.info("End of data PDU sent to %s", self.client)
+            case cache_reset.TYPE:
+                logger.info("Cache reset PDU sent to %s", self.client)
+            case error_report.TYPE:
+                logger.info("Error report PDU sent to %s", self.client)
+            case _:
+                logger.error("Unsupported PDU type %s NOT sent to %s", pdu_module.TYPE, self.client)
+                return
+
+        buffer = pdu_module.serialize(**data)
         self.writer.write(buffer)
 
-    async def handle_pdu(self):
+    async def handle_pdu(self) -> None:
         """
         Handles inbound RTR PDUs by reading from the asyncio stream reader and writing to the
         asyncio stream writer.
@@ -165,12 +190,15 @@ class Cache(Speaker):
         error_report.validate(pdu)
         logger.warning(pdu)
 
+        # https://datatracker.ietf.org/doc/html/rfc8210#section-12
         if pdu["error"] in [0, 1, 3, 4, 5, 6, 7, 8]:
-            raise FataErrorPDU(pdu["text"], pdu["error"])
+            text = pdu["text"] or ""
+            raise FataErrorPDU(text, pdu["error"])
 
     async def handle_serial_query(self, buffer: bytes):
         """
-        Implements the sequences of PDU transmissions to handle the Serial Query PDU
+        Implements the sequences of PDU transmissions to handle the Serial Query PDU as described by
+        https://datatracker.ietf.org/doc/html/rfc8210#section-8.2
 
         Arguments:
         ----------
@@ -180,19 +208,29 @@ class Cache(Speaker):
         pdu = serial_query.unserialize(buffer)
         serial_query.validate(pdu)
 
-        pdu = cache_response.serialize(self.session)
-        self.write(pdu)
+        self.write(cache_reset)
 
-        pdu = end_of_data.serialize(
-            self.session, self.serial, refresh=self.refresh, expire=self.expire, retry=self.retry
-        )
-        self.write(pdu)
+        # pdu = cache_response.serialize(self.session)
+        # self.write(pdu)
+
+        # ROAs go here
+
+        # self.write(end_of_data,
+        #     {
+        #         "session": self.session,
+        #         "serial": self.serial,
+        #         "refresh": self.refresh,
+        #         "expire":self.expire,
+        #         "retry": self.retry,
+        #     }
+        # )
 
         await self.drain()
 
     async def handle_reset_query(self, buffer: bytes):
         """
-        Implements the sequences of PDU transmissions to handle the Reset Query PDU
+        Implements the sequences of PDU transmissions to handle the Reset Query PDU as described by
+        https://datatracker.ietf.org/doc/html/rfc8210#section-8.1
 
         Arguments:
         ----------
@@ -202,15 +240,20 @@ class Cache(Speaker):
         pdu = reset_query.unserialize(buffer)
         reset_query.validate(pdu)
 
-        pdu = cache_response.serialize(self.session)
-        self.write(pdu)
+        self.write(cache_response, {"session": self.session})
 
         # ROAs go here
 
-        pdu = end_of_data.serialize(
-            self.session, self.serial, refresh=self.refresh, expire=self.expire, retry=self.retry
+        self.write(
+            end_of_data,
+            {
+                "session": self.session,
+                "serial": self.serial,
+                "refresh": self.refresh,
+                "expire": self.expire,
+                "retry": self.retry,
+            },
         )
-        self.write(pdu)
 
         await self.drain()
 
@@ -235,16 +278,16 @@ class Cache(Speaker):
 
         # Find the remote socket data
         host, port = self.writer.get_extra_info("peername")
-        client = f"{host}:{port}"
-        logger.info("New client connected: %s", client)
+        self.client = f"{host}:{port}"
+        logger.info("New client connected: %s", self.client)
 
         while not reader.at_eof():
             # Read and parse the header
             try:
                 buffer, header = await self.parse_header()
             except InvalidPDUError as error:
-                logger.warning("Discarding spurious dara from: %s", client)
-                logger.debug("Excessively short PDU received from %s: %s", client, error.pdu)
+                logger.warning("Discarding spurious dara from: %s", self.client)
+                logger.debug("Excessively short PDU received from %s: %s", self.client, error.pdu)
                 continue
 
             # Find if there's more to read
@@ -256,19 +299,19 @@ class Cache(Speaker):
             # Handle the PDU
             match header["type"]:
                 case serial_query.TYPE:
-                    logger.info("Serial query PDU received from %s", client)
+                    logger.info("Serial query PDU received from %s", self.client)
                     await self.handle_serial_query(buffer)
                 case reset_query.TYPE:
-                    logger.info("Reset query PDU received from %s", client)
+                    logger.info("Reset query PDU received from %s", self.client)
                     await self.handle_reset_query(buffer)
                 case cache_response.TYPE:
-                    logger.info("Cache response PDU received from %s", client)
+                    logger.info("Cache response PDU received from %s", self.client)
                 case end_of_data.TYPE:
-                    logger.info("End of data PDU received from %s", client)
+                    logger.info("End of data PDU received from %s", self.client)
                 case cache_reset.TYPE:
-                    logger.info("Cache reset PDU received from %s", client)
+                    logger.info("Cache reset PDU received from %s", self.client)
                 case error_report.TYPE:
-                    logger.warning("Error report PDU received from %s", client)
+                    logger.warning("Error report PDU received from %s", self.client)
                     try:
                         self.handle_error_report(buffer)
                     except FataErrorPDU as error:
@@ -277,9 +320,11 @@ class Cache(Speaker):
                         )
                         break
                 case _:
-                    logger.warning("Unsupport PDU type %s received from %s", header["type"], client)
+                    logger.warning(
+                        "Unsupported PDU type %s received from %s", header["type"], self.client
+                    )
 
-        logger.info("Client disconnected: %s", client)
+        logger.info("Client disconnected: %s", self.client)
 
         # Close the writer stream
         self.writer.close()
