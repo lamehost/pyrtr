@@ -14,9 +14,12 @@ from .pdu import (
     cache_response,
     end_of_data,
     error_report,
+    ipv4_prefix,
+    ipv6_prefix,
     reset_query,
     serial_query,
 )
+from .rpki_client import RPKIClient
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +138,8 @@ class Speaker(ABC):
         """
 
         data = data or {}
+        buffer = pdu_module.serialize(**data)
+        self.writer.write(buffer)
 
         match pdu_module.TYPE:
             case serial_query.TYPE:
@@ -143,6 +148,10 @@ class Speaker(ABC):
                 logger.info("Reset query PDU sent to %s", self.client)
             case cache_response.TYPE:
                 logger.info("Cache response PDU sent to %s", self.client)
+            case ipv4_prefix.TYPE:
+                logger.info("IPv4 prefix PDU sent to %s", self.client)
+            case ipv6_prefix.TYPE:
+                logger.info("IPv6 prefix PDU sent to %s", self.client)
             case end_of_data.TYPE:
                 logger.info("End of data PDU sent to %s", self.client)
             case cache_reset.TYPE:
@@ -151,10 +160,6 @@ class Speaker(ABC):
                 logger.info("Error report PDU sent to %s", self.client)
             case _:
                 logger.error("Unsupported PDU type %s NOT sent to %s", pdu_module.TYPE, self.client)
-                return
-
-        buffer = pdu_module.serialize(**data)
-        self.writer.write(buffer)
 
     async def handle_pdu(self) -> None:
         """
@@ -167,7 +172,6 @@ class Speaker(ABC):
 class Cache(Speaker):
     """
     Handles the the sequences of PDU transmissions on an RTR Cache
-
     """
 
     def __init__(self, session: int, *, refresh: int = 3600, expire: int = 600, retry: int = 7200):
@@ -242,7 +246,25 @@ class Cache(Speaker):
 
         self.write(cache_response, {"session": self.session})
 
-        # ROAs go here
+        rpki_client = RPKIClient("json")
+        for prefix in rpki_client.prefixes:
+            if prefix["type"] == 4:
+                _module = ipv4_prefix
+            else:
+                _module = ipv6_prefix
+
+            self.write(
+                _module,
+                {
+                    "flags": prefix["flags"],
+                    "prefix_length": prefix["prefix_length"],
+                    "max_length": prefix["max_length"],
+                    "prefix": prefix["prefix"],
+                    "asn": prefix["asn"],
+                },
+            )
+
+        await self.drain()
 
         self.write(
             end_of_data,
