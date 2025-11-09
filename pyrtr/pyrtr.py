@@ -10,11 +10,11 @@ from .server import rtr_server
 logger = logging.getLogger(__name__)
 
 
-async def json_loader(
-    path: str | os.PathLike[str], rpki_client: RPKIClient, refresh: int = 3600
+async def json_reloader(
+    path: str | os.PathLike[str], rpki_client: RPKIClient, sleep: int = 1800
 ) -> None:
     """
-    Reloads the content of the RPKI JSON output
+    Reloads the content of the RPKI JSON output. Holds `sleeps` seconds between every attempt
 
     Arguments:
     ----------
@@ -28,7 +28,7 @@ async def json_loader(
     while True:
         await rpki_client.load(path)
         logger.info("JSON file reloaded: %d prefixes", len(rpki_client.prefixes))
-        await asyncio.sleep(refresh)
+        await asyncio.sleep(sleep)
 
 
 async def pyrtr(  # pylint: disable=too-many-arguments
@@ -42,7 +42,7 @@ async def pyrtr(  # pylint: disable=too-many-arguments
     retry: int = 7200,
 ) -> None:
     """
-    Reloads the content of the RPKI JSON output
+    Reloads the content of the RPKI JSON output every half `refresh`, and starts the RTR server.
 
     Arguments:
     ----------
@@ -61,7 +61,8 @@ async def pyrtr(  # pylint: disable=too-many-arguments
     expire: int
         Expire Interval in seconds: Expire: 7200
     """
+
     await asyncio.gather(
-        json_loader(path, rpki_client, refresh),
+        json_reloader(path, rpki_client, int(refresh / 2)),
         rtr_server(host, port, rpki_client, refresh=refresh, retry=retry, expire=expire),
     )
