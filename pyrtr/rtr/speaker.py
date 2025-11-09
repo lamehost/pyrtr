@@ -276,9 +276,15 @@ class Speaker(ABC):
                         error=error.code, pdu=error.buffer, text=bytes(str(error), "utf-8")
                     )
                     break
+            except BrokenPipeError:
+                logger.info("Connection died unexpectedly: %s", self.client)
+                break
 
         logger.info("Client disconnected: %s", self.client)
 
         # Close the writer stream
         self.writer.close()
-        await self.writer.wait_closed()
+        try:
+            await self.writer.wait_closed()
+        except BrokenPipeError:
+            pass
