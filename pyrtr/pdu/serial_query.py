@@ -5,6 +5,8 @@ Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.3
 import struct
 from typing import TypedDict
 
+from .errors import CorruptDataError, UnsupportedProtocolVersionError
+
 VERSION = 1
 TYPE = 1
 LENGTH = 12
@@ -40,7 +42,7 @@ def serialize(session: int, serial: int) -> bytes:
     return struct.pack("!BBHII", VERSION, TYPE, session, LENGTH, serial)
 
 
-def unserialize(buffer: bytes) -> SerialQuery:
+def unserialize(buffer: bytes, validate: bool = True) -> SerialQuery:
     """
     Unserializes the PDU
 
@@ -48,12 +50,30 @@ def unserialize(buffer: bytes) -> SerialQuery:
     ----------
     buffer: bytes
         Binary PDU data
+    validate: bool
+        If True, then validates the values. Default: True
 
     Returns:
     --------
     SerialQuery: Dictionary representing the content
     """
     fields = struct.unpack("!BBHII", buffer)
+
+    if validate:
+        if fields[0] != VERSION:
+            raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
+
+        if fields[3] != LENGTH:
+            raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
+
+        if len(buffer) > LENGTH:
+            raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
+
+        if fields[2] < 1 or fields[2] > 65535:
+            raise CorruptDataError(f"Invalid session ID: {fields[2]}")
+
+        if fields[4] < 1 or fields[4] > 4294967295:
+            raise CorruptDataError(f"Invalid serial ID: {fields[4]}")
 
     pdu: SerialQuery = {
         "version": fields[0],
@@ -64,17 +84,3 @@ def unserialize(buffer: bytes) -> SerialQuery:
     }
 
     return pdu
-
-
-def validate(pdu: SerialQuery):
-    """
-    Raises AssertionError if the PDU is not valid
-
-    Arguments:
-    ----------
-    pdu: SerialQuery
-        The PDU to validate
-    """
-    assert pdu["version"] == VERSION, f"Invalid pdu version: {pdu['version']}"
-    assert pdu["type"] == TYPE, f"Invalid pdu version: {pdu['type']}"
-    assert pdu["length"] == LENGTH, f"Invalid pdu version: {pdu['length']}"

@@ -5,6 +5,8 @@ Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.8
 import struct
 from typing import TypedDict
 
+from .errors import CorruptDataError, UnsupportedProtocolVersionError
+
 VERSION = 1
 TYPE = 7
 LENGTH = 24
@@ -61,7 +63,7 @@ def serialize(
     )
 
 
-def unserialize(buffer: bytes) -> EndOfdata:
+def unserialize(buffer: bytes, validate: bool = True) -> EndOfdata:  # NOSONAR
     """
     Unserializes the PDU
 
@@ -69,12 +71,39 @@ def unserialize(buffer: bytes) -> EndOfdata:
     ----------
     buffer: bytes
         Binary PDU data
+    validate: bool
+        If True, then validates the values. Default: True
 
     Returns:
     --------
     EndOfdata: Dictionary representing the content
     """
     fields = struct.unpack("!BBHIIIII", buffer)
+
+    if validate:
+        if fields[0] != VERSION:
+            raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
+
+        if fields[3] != LENGTH:
+            raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
+
+        if len(buffer) > LENGTH:
+            raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
+
+        if fields[2] < 1 or fields[2] > 65535:
+            raise CorruptDataError(f"Invalid session ID: {fields[2]}")
+
+        if fields[4] < 1 or fields[4] > 4294967295:
+            raise CorruptDataError(f"Invalid serial ID: {fields[4]}")
+
+        if fields[5] < 1 or fields[5] > 86400:
+            raise CorruptDataError(f"Invalid refresh period: {fields[5]}")
+
+        if fields[6] < 1 or fields[6] > 7200:
+            raise CorruptDataError(f"Invalid retry period: {fields[6]}")
+
+        if fields[7] < 1 or fields[7] > 172800:
+            raise CorruptDataError(f"Invalid expire period: {fields[7]}")
 
     pdu: EndOfdata = {
         "version": fields[0],
@@ -88,26 +117,3 @@ def unserialize(buffer: bytes) -> EndOfdata:
     }
 
     return pdu
-
-
-def validate(pdu: EndOfdata):
-    """
-    Raises AssertionError if the PDU is not valid
-
-    Arguments:
-    ----------
-    pdu: EndOfdata
-        The PDU to validate
-    """
-    assert pdu["version"] == VERSION, f"Invalid pdu version: {pdu['version']}"
-    assert pdu["type"] == TYPE, f"Invalid pdu version: {pdu['type']}"
-    assert pdu["length"] == LENGTH, f"Invalid pdu version: {pdu['length']}"
-
-    assert pdu["refresh"] >= 1, f"Invalid refresh period: {pdu['refresh']}"
-    assert pdu["refresh"] <= 86400, f"Invalid refresh period: {pdu['refresh']}"
-
-    assert pdu["retry"] >= 1, f"Invalid retry period: {pdu['retry']}"
-    assert pdu["retry"] <= 7200, f"Invalid retry period: {pdu['retry']}"
-
-    assert pdu["expire"] >= 1, f"Invalid expire period: {pdu['expire']}"
-    assert pdu["expire"] <= 172800, f"Invalid expire period: {pdu['expire']}"

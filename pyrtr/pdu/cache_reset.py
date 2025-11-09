@@ -5,6 +5,8 @@ Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.9
 import struct
 from typing import TypedDict
 
+from .errors import CorruptDataError, UnsupportedProtocolVersionError
+
 VERSION = 1
 TYPE = 8
 LENGTH = 8
@@ -17,7 +19,6 @@ class CacheReset(TypedDict):
 
     version: int
     type: int
-    zero: int
     length: int
 
 
@@ -38,7 +39,7 @@ def serialize() -> bytes:
     )
 
 
-def unserialize(buffer: bytes) -> CacheReset:
+def unserialize(buffer: bytes, validate: bool = True) -> CacheReset:
     """
     Unserializes the PDU
 
@@ -46,6 +47,8 @@ def unserialize(buffer: bytes) -> CacheReset:
     ----------
     buffer: bytes
         Binary PDU data
+    validate: bool
+        If True, then validates the values. Default: True
 
     Returns:
     --------
@@ -53,26 +56,23 @@ def unserialize(buffer: bytes) -> CacheReset:
     """
     fields = struct.unpack("!BBHI", buffer)
 
+    if validate:
+        if fields[0] != VERSION:
+            raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
+
+        if fields[3] != LENGTH:
+            raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
+
+        if len(buffer) > LENGTH:
+            raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
+
+        if fields[2] != 0:
+            raise CorruptDataError(f"The zero field is not zero: {fields[2]}")
+
     pdu: CacheReset = {
         "version": fields[0],
         "type": fields[1],
-        "zero": fields[2],
         "length": fields[3],
     }
 
     return pdu
-
-
-def validate(pdu: CacheReset):
-    """
-    Raises AssertionError if the PDU is not valid
-
-    Arguments:
-    ----------
-    pdu: CacheReset
-        The PDU to validate
-    """
-    assert pdu["version"] == VERSION, f"Invalid pdu version: {pdu['version']}"
-    assert pdu["type"] == TYPE, f"Invalid pdu version: {pdu['type']}"
-    assert pdu["zero"] == 0, f"Invalid pdu version: {pdu['zero']}"
-    assert pdu["length"] == LENGTH, f"Invalid pdu version: {pdu['length']}"
