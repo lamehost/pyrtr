@@ -6,13 +6,20 @@ import asyncio
 import logging
 import random
 
-from .rtr import Cache
+from pyrtr.rpki_client import RPKIClient
+from pyrtr.rtr.cache import Cache
 
 logger = logging.getLogger(__name__)
 
 
-async def rtr_server(
-    host: str, port: int, *, refresh: int = 3600, expire: int = 600, retry: int = 7200
+async def rtr_server(  # pylint: disable=too-many-arguments
+    host: str,
+    port: int,
+    rpki_client: RPKIClient,
+    *,
+    refresh: int = 3600,
+    expire: int = 600,
+    retry: int = 7200,
 ):
     """
     Starts a local async RTR server and binds it to the specified host and port
@@ -23,6 +30,8 @@ async def rtr_server(
         The host to bind to
     port: int
         The TCP port to bind to
+    rpki_client: RPKIClient
+        RPKIClient instance
     refresh: int
         Refresh Interval in seconds. Default: 3600
     retry: int
@@ -32,7 +41,7 @@ async def rtr_server(
     """
     session = random.randrange(0, 65535)
 
-    cache = Cache(session, refresh=refresh, retry=retry, expire=expire)
+    cache = Cache(session, rpki_client, refresh=refresh, retry=retry, expire=expire)
 
     # Initialize server
     server = await asyncio.start_server(cache.client_connected_cb, host, port)

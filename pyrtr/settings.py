@@ -1,5 +1,6 @@
 """Implements the application settings parser"""
 
+import os
 from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
 
     HOST: IPv4Address | IPv6Address = IPv4Address("127.0.0.1")
     PORT: Annotated[int, Field(gt=0, ls=65536)] = 8323  # pyright: ignore[reportCallIssue]
+    PATH: str | os.PathLike[str] = "json"
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6
     REFRESH: Annotated[int, Field(gt=0, ls=86401)] = 3600  # pyright: ignore[reportCallIssue]
