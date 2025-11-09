@@ -5,6 +5,8 @@ Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.11
 import struct
 from typing import TypedDict
 
+from .errors import CorruptDataError, UnsupportedProtocolVersionError
+
 VERSION = 1
 TYPE = 10
 
@@ -24,7 +26,7 @@ class ErrorReport(TypedDict):
     text: str | None
 
 
-def serialize(error: int, pdu: bytes, *, text: bytes | None = None) -> bytes:
+def serialize(error: int, pdu: bytes, text: bytes = bytes()) -> bytes:
     """
     Serializes the PDU
 
@@ -35,42 +37,34 @@ def serialize(error: int, pdu: bytes, *, text: bytes | None = None) -> bytes:
     pdu: bytes
         Serialized erroneous PDU
     text: bytes
-        Error diagnostic message. Default: None
+        Error diagnostic message. Default: bytes()
 
     Returns:
     --------
     bytes: Serialized data
     """
-    if text is not None:
-        length = 12 + len(pdu) + len(text)
+    text = bytes(text)
+    print(f"text: {text}")
+    length = 16 + len(pdu) + len(text)
 
-        return struct.pack(
-            "!BBHIIIII",
-            VERSION,
-            TYPE,
-            error,
-            length,
-            len(pdu),
-            pdu,
-            len(text),
-            text,
-        )
-
-    length = 12 + len(pdu)
-
-    return struct.pack(
-        "!BBHIIII",
+    before_pdu = struct.pack(
+        "!BBHII",
         VERSION,
         TYPE,
         error,
         length,
         len(pdu),
-        pdu,
-        0,
     )
 
+    after_pdu = struct.pack(
+        "!I",
+        len(text),
+    )
 
-def unserialize(buffer: bytes) -> ErrorReport:
+    return before_pdu + pdu + after_pdu + text
+
+
+def unserialize(buffer: bytes, validate: bool = True) -> ErrorReport:
     """
     Unserializes the PDU
 
@@ -78,12 +72,27 @@ def unserialize(buffer: bytes) -> ErrorReport:
     ----------
     buffer: bytes
         Binary PDU data
+    validate: bool
+        If True, then validates the values. Default: True
 
     Returns:
     --------
     ErrorReport: Dictionary representing the content
     """
     fields = struct.unpack("!BBHII", buffer[:12])
+
+    if validate:
+        if fields[0] != VERSION:
+            raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
+
+        if len(buffer) > fields[3]:
+            raise CorruptDataError(f"The PDU is not {fields[3]} bytes long: {len(buffer)}")
+
+        if fields[2] != 0:
+            raise CorruptDataError(f"The zero field is not zero: {fields[2]}")
+
+        if fields[3] < 0 or fields[3] > 8:
+            raise CorruptDataError(f"Invalid error code: {fields[2]}")
 
     pdu: ErrorReport = {
         "version": fields[0],
@@ -109,16 +118,3 @@ def unserialize(buffer: bytes) -> ErrorReport:
         pdu["text"] = remaining_buffer.decode("utf-8")
 
     return pdu
-
-
-def validate(pdu: ErrorReport):
-    """
-    Raises AssertionError if the PDU is not valid
-
-    Arguments:
-    ----------
-    pdu: ErrorReport
-        The PDU to validate
-    """
-    assert pdu["version"] == VERSION, f"Invalid pdu version: {pdu['version']}"
-    assert pdu["type"] == TYPE, f"Invalid pdu version: {pdu['type']}"
