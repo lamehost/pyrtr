@@ -29,3 +29,5 @@ pylint = "^4.0.2"
 
 [tool.poetry.dependencies]
 pydantic-settings = "^2.11.0"
+orjson = "^3.11.4"
+aiofiles = "^25.1.0"
