@@ -43,8 +43,8 @@ def serialize(error: int, pdu: bytes, text: bytes = bytes()) -> bytes:
     --------
     bytes: Serialized data
     """
+    # Force text to by bytes
     text = bytes(text)
-    print(f"text: {text}")
     length = 16 + len(pdu) + len(text)
 
     before_pdu = struct.pack(
