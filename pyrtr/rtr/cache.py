@@ -115,6 +115,7 @@ class Cache(Speaker):
         self.write_cache_response()
 
         self.write_ip_prefixes(prefixes=self.rpki_client.prefixes)
+        await self.drain()
 
         self.write_end_of_data(
             refresh=self.refresh,
