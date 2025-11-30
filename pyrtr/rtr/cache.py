@@ -31,12 +31,6 @@ class RTRHeader(TypedDict):
     length: int
 
 
-class FatalRTRError(Exception):
-    """
-    Raised when a fatal RTR error is received
-    """
-
-
 class Cache(Speaker):
     """
     Handles the the sequences of PDU transmissions on an RTR Cache
@@ -60,29 +54,6 @@ class Cache(Speaker):
         self.retry = retry
 
         super().__init__(session)
-
-    def handle_error_report(self, buffer: bytes) -> bool:
-        """
-        Implements the sequences of PDU transmissions to handle the Error Report PDU
-
-        Arguments:
-        ----------
-        buffer: bytes
-            The Error Report PDU binary data
-
-        Returns:
-        --------
-        bool: True if is fatal error, false if it's not
-        """
-        pdu = error_report.unserialize(buffer)
-        # https://datatracker.ietf.org/doc/html/rfc8210#section-12
-        if pdu["error"] in [0, 1, 3, 4, 5, 6, 7, 8]:
-            logger.info(
-                "Received fatal error (%i) from (%s): %s", pdu["error"], self.client, pdu["text"]
-            )
-            return True
-
-        return False
 
     async def handle_serial_query(self, buffer: bytes):
         """
@@ -146,8 +117,6 @@ class Cache(Speaker):
                 logger.debug("Cache reset PDU received from %s", self.client)
             case error_report.TYPE:
                 logger.debug("Error report PDU received from %s", self.client)
-                fatal = self.handle_error_report(buffer)
-                if fatal:
-                    raise FatalRTRError
+                self.handle_error_report(buffer)
             case _:
                 raise UnsupportedPDUTypeError(f"Unsupported PDU Type: {header["type"]}")

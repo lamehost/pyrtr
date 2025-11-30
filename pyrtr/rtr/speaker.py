@@ -17,8 +17,15 @@ from pyrtr.pdu import (
 )
 from pyrtr.pdu.errors import (
     CorruptDataError,
+    DuplicateAnnouncementReceivedError,
+    InternalError,
+    InvalidRequestError,
+    NoDataAvailableError,
     PDUError,
     UnexpectedProtocolVersionError,
+    UnsupportedPDUTypeError,
+    UnsupportedProtocolVersionError,
+    WithdrawalofUnknownRecordError,
 )
 
 logger = logging.getLogger(__name__)
@@ -216,6 +223,73 @@ class Speaker(ABC):
         """
         raise NotImplementedError
 
+    def handle_error_report(self, buffer: bytes):
+        """
+        Handles the Error Report PDU and raises a PDUError
+
+        Arguments:
+        ----------
+        buffer: bytes
+            The Error Report PDU binary data
+        """
+        # https://datatracker.ietf.org/doc/html/rfc8210#section-12
+        pdu = error_report.unserialize(buffer)
+
+        message = pdu["text"] or ""
+
+        match pdu["error"]:
+            case 0:
+                raise CorruptDataError(message=message, buffer=pdu["pdu"])
+            case 1:
+                raise InternalError(message=message, buffer=pdu["pdu"])
+            case 2:
+                raise NoDataAvailableError(message=message, buffer=pdu["pdu"])
+            case 3:
+                raise InvalidRequestError(message=message, buffer=pdu["pdu"])
+            case 4:
+                raise UnsupportedProtocolVersionError(message=message, buffer=pdu["pdu"])
+            case 5:
+                raise UnsupportedPDUTypeError(message=message, buffer=pdu["pdu"])
+            case 6:
+                raise WithdrawalofUnknownRecordError(message=message, buffer=pdu["pdu"])
+            case 7:
+                raise DuplicateAnnouncementReceivedError(message=message, buffer=pdu["pdu"])
+            case 8:
+                raise UnexpectedProtocolVersionError(message=message, buffer=pdu["pdu"])
+            case _:
+                ...
+
+    def handle_pdu_error_exception(self, header: RTRHeader | None, error: PDUError) -> bool:
+        """
+        Handles PDUErrors
+
+        header: RTRHeader | None
+            The fixed header part of the PDU
+
+        error: PDUError
+            The error thrown by the script
+
+        Returns:
+        --------
+        bool: Whether is the error is fatal or not
+        """
+        if header is not None and header["type"] == error_report.TYPE:
+            logger.info("Received a malformed Error Report from: %s", self.client)
+        else:
+            if error.fatal:
+                logger.info("Fatal error while handling a PDU from %s: %s", self.client, str(error))
+            else:
+                logger.info(
+                    "Non fatal error while handling a PDU from %s: %s",
+                    self.client,
+                    str(error),
+                )
+            self.write_error_report(
+                error=error.code, pdu=error.buffer, text=bytes(str(error), "utf-8")
+            )
+
+        return error.fatal
+
     async def client_connected_cb(
         self, reader: asyncio.streams.StreamReader, writer: asyncio.streams.StreamWriter
     ):
@@ -249,6 +323,7 @@ class Speaker(ABC):
                 # Read and parse the header
                 buffer, header = await self.parse_header()
 
+                # Version negotiation
                 if self.version is None:
                     self.version = header["version"]
                 elif self.version != header["version"]:
@@ -263,18 +338,10 @@ class Speaker(ABC):
                     buffer = buffer + await self.read(remaining_bytes)
 
                 # Handle the PDU
-                try:
-                    await self.handle_pdu(header, buffer)
-                except FatalRTRError:
-                    break
+                await self.handle_pdu(header, buffer)
             except PDUError as error:
-                if header is not None and header["type"] == error_report.TYPE:
-                    logger.info("Received a malformed Error Report")
-                if error_report.TYPE and error.fatal:
-                    logger.info("Error while handling a PDU from %s: %s", self.client, str(error))
-                    self.write_error_report(
-                        error=error.code, pdu=error.buffer, text=bytes(str(error), "utf-8")
-                    )
+                exit_loop = self.handle_pdu_error_exception(header, error)
+                if exit_loop:
                     break
             except BrokenPipeError:
                 logger.info("Connection died unexpectedly: %s", self.client)

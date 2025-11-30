@@ -4,8 +4,8 @@ import asyncio
 import logging
 import os
 
-from .rpki_client import RPKIClient
-from .server import rtr_server
+from pyrtr.rpki_client import RPKIClient
+from pyrtr.server import rtr_server
 
 logger = logging.getLogger(__name__)
 
