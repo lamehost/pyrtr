@@ -47,11 +47,16 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     server = await asyncio.start_server(cache.client_connected_cb, host, port)
 
     # Find the sockets the server will bind to
-    sockets = ", ".join(
-        [f"{_socket.getsockname()[0]}:{_socket.getsockname()[1]}" for _socket in server.sockets]
+    listening_sockets = ", ".join(
+        [
+            f"{listening_host}:{listening_port}"
+            for _socket in server.sockets
+            if (listening_host := _socket.getsockname()[0])
+            if (listening_port := _socket.getsockname()[1])
+        ]
     )
 
     async with server:
-        logger.info("Listening on %s. Session: %i", sockets, session)
+        logger.info("Listening on %s. Session: %i", listening_sockets, session)
         # Start the server
         await server.serve_forever()
