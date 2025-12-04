@@ -90,10 +90,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> EndOfdata:  # NOSONAR
         if len(buffer) > LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
 
-        if fields[2] < 1 or fields[2] > 65535:
+        if fields[2] < 0 or fields[2] > 65535:
             raise CorruptDataError(f"Invalid session ID: {fields[2]}")
 
-        if fields[4] < 1 or fields[4] > 4294967295:
+        if fields[4] < 0 or fields[4] > 4294967295:
             raise CorruptDataError(f"Invalid serial ID: {fields[4]}")
 
         if fields[5] < 1 or fields[5] > 86400:
