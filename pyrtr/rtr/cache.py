@@ -12,7 +12,6 @@ from pyrtr.pdu import (
     serial_query,
 )
 from pyrtr.pdu.errors import (
-    InternalError,
     UnsupportedPDUTypeError,
 )
 from pyrtr.rpki_client import RPKIClient
@@ -55,7 +54,7 @@ class Cache(Speaker):
 
         super().__init__(session)
 
-    async def handle_serial_query(self, buffer: bytes):
+    async def handle_serial_query(self, client: str, buffer: bytes):
         """
         Implements the sequences of PDU transmissions to handle the Serial Query PDU as described by
         https://datatracker.ietf.org/doc/html/rfc8210#section-8.2
@@ -66,11 +65,30 @@ class Cache(Speaker):
             The Serial Query PDU binary data
         """
         # Validates the PDU
-        serial_query.unserialize(buffer)
+        pdu = serial_query.unserialize(buffer)
 
-        raise InternalError("Not implemented yet", buffer=buffer)
+        serial = int(pdu["serial"])
+        try:
+            prefixes = self.rpki_client.json[serial]["diffs"]
+        except KeyError:
+            # Send Cache Reset in case the serial doesn't exist anymore
+            self.write_cache_reset(client=client)
+            await self.drain(client=client)
+            return
 
-    async def handle_reset_query(self, buffer: bytes):
+        self.write_cache_response(client=client)
+        self.write_ip_prefixes(client=client, prefixes=prefixes)
+
+        self.write_end_of_data(
+            client=client,
+            refresh=self.refresh,
+            expire=self.expire,
+            retry=self.retry,
+        )
+
+        await self.drain(client=client)
+
+    async def handle_reset_query(self, client: str, buffer: bytes):
         """
         Implements the sequences of PDU transmissions to handle the Reset Query PDU as described by
         https://datatracker.ietf.org/doc/html/rfc8210#section-8.1
@@ -83,20 +101,21 @@ class Cache(Speaker):
         # Validates the PDU
         reset_query.unserialize(buffer)
 
-        self.write_cache_response()
+        self.write_cache_response(client=client)
 
-        self.write_ip_prefixes(prefixes=self.rpki_client.prefixes)
-        await self.drain()
+        self.write_ip_prefixes(client=client, prefixes=self.rpki_client.prefixes)
+        await self.drain(client=client)
 
         self.write_end_of_data(
+            client=client,
             refresh=self.refresh,
             expire=self.expire,
             retry=self.retry,
         )
 
-        await self.drain()
+        await self.drain(client=client)
 
-    async def handle_pdu(self, header: RTRHeader, buffer: bytes) -> None:
+    async def handle_pdu(self, client: str, header: RTRHeader, buffer: bytes) -> None:
         """
         Handles the inbound PDU.
 
@@ -108,15 +127,15 @@ class Cache(Speaker):
         """
         match header["type"]:
             case serial_query.TYPE:
-                logger.debug("Serial query PDU received from %s", self.client)
-                await self.handle_serial_query(buffer)
+                logger.debug("Serial query PDU received from %s", client)
+                await self.handle_serial_query(client, buffer)
             case reset_query.TYPE:
-                logger.debug("Reset query PDU received from %s", self.client)
-                await self.handle_reset_query(buffer)
+                logger.debug("Reset query PDU received from %s", client)
+                await self.handle_reset_query(client, buffer)
             case cache_reset.TYPE:
-                logger.debug("Cache reset PDU received from %s", self.client)
+                logger.debug("Cache reset PDU received from %s", client)
             case error_report.TYPE:
-                logger.debug("Error report PDU received from %s", self.client)
-                self.handle_error_report(buffer)
+                logger.debug("Error report PDU received from %s", client)
+                self.raise_on_error_report(buffer)
             case _:
                 raise UnsupportedPDUTypeError(f"Unsupported PDU Type: {header["type"]}")
