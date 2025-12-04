@@ -30,7 +30,7 @@ def serialize() -> bytes:
     --------
     bytes: Serialized data
     """
-    return struct.pack("!", VERSION, TYPE, 0, LENGTH)
+    return struct.pack("!BBHI", VERSION, TYPE, 0, LENGTH)
 
 
 def unserialize(buffer: bytes, validate: bool = True) -> ResetQuery:
