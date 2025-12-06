@@ -58,7 +58,7 @@ class Streams(TypedDict):
     writer: asyncio.streams.StreamWriter
 
 
-class Speaker(ABC):
+class Speaker(asyncio.Protocol, ABC):
     """
     Abstract Base Class that defines the RTR spekaer
 
@@ -68,15 +68,16 @@ class Speaker(ABC):
         The RTR session ID
     """
 
+    client: str
     version: int | None = None
     rpki_client: RPKIClient
     session: int
-    streams: dict[str, Streams] = {}
+    transport: asyncio.BaseTransport
 
     def __init__(self, session: int):
         self.session = session
 
-    async def parse_header(self, client: str) -> tuple[bytes, RTRHeader]:
+    def parse_header(self, data: bytes) -> RTRHeader:
         """
         Reads and arses the RTR PDU header.
 
@@ -84,88 +85,63 @@ class Speaker(ABC):
         --------
         bytes, RTRHeader: The binary RTR header data and the parsed RTR header
         """
-        # Read buffer
-        buffer = await self.read(client, 8)
-        if len(buffer) < 8:
+        # Read data
+        if len(data) < 8:
             raise CorruptDataError("PDU is too short")
 
         # Parser header
-        fields = struct.unpack("!BBHI", buffer)
+        fields = struct.unpack("!BBHI", data[:8])
 
-        return (
-            buffer,
-            {
-                "version": fields[0],
-                "type": fields[1],
-                "length": fields[3],
-            },
+        return RTRHeader(
+            version=fields[0],
+            type=fields[1],
+            length=fields[3],
         )
 
-    async def drain(self, client: str) -> None:
-        """
-        Blocks until the asyncio stream writer buffer is transmitted
-        """
-        await self.streams[client]["writer"].drain()
-
-    async def read(self, client: str, length: int) -> bytes:
-        """
-        Reads from the asyncio stream reader
-
-        Arguments:
-        ----------
-        lenght: int
-            The amount of bytes to read
-
-        Returns:
-        --------
-        bytes: Data read from the asyncio stream reader
-        """
-        return await self.streams[client]["reader"].read(length)
-
-    def write(self, client: str, buffer: bytes) -> None:
+    def write(self, data: bytes) -> None:
         """
         Writes to the asyncio stream writer
 
         Arguments:
         ----------
-        buffer: bytes
+        data: bytes
             The serialized PDU to send
         """
-        self.streams[client]["writer"].write(buffer)
+        self.transport.write(data)  # pyright: ignore
 
-    def write_serial_notify(self, client: str) -> None:
+    def write_serial_notify(self) -> None:
         """
         Writes a Serial Notify PDU to the wire
         """
         pdu = serial_notify.serialize(session=self.session, serial=self.rpki_client.serial)
-        self.write(client, pdu)
-        logger.debug("Serial notify PDU sent to %s", client)
+        self.write(pdu)
+        logger.debug("Serial notify PDU sent to %s", self.client)
 
-    def write_serial_query(self, client: str) -> None:
+    def write_serial_query(self) -> None:
         """
         Writes a Serial Query PDU to the wire
         """
         pdu = serial_query.serialize(session=self.session, serial=self.rpki_client.serial)
-        self.write(client, pdu)
-        logger.debug("Serial query PDU sent to %s", client)
+        self.write(pdu)
+        logger.debug("Serial query PDU sent to %s", self.client)
 
-    def write_reset_query(self, client: str) -> None:
+    def write_reset_query(self) -> None:
         """
         Writes a Reset Query PDU to the wire
         """
         pdu = serial_query.serialize(session=self.session, serial=self.rpki_client.serial)
-        self.write(client, pdu)
-        logger.debug("Reset query PDU sent to %s", client)
+        self.write(pdu)
+        logger.debug("Reset query PDU sent to %s", self.client)
 
-    def write_cache_response(self, client: str) -> None:
+    def write_cache_response(self) -> None:
         """
         Writes a Cache Response PDU to the wire
         """
         pdu = cache_response.serialize(session=self.session)
-        self.write(client, pdu)
-        logger.debug("Cache response PDU sent to %s", client)
+        self.write(pdu)
+        logger.debug("Cache response PDU sent to %s", self.client)
 
-    def write_ip_prefixes(self, client: str, prefixes: list[bytes]) -> None:
+    def write_ip_prefixes(self, prefixes: list[bytes]) -> None:
         """
         Writes IP prefxies to the wire
 
@@ -174,12 +150,10 @@ class Speaker(ABC):
         list[bytes]:
             List of serialized IP prefixes
         """
-        self.streams[client]["writer"].writelines(prefixes)
-        logger.debug("IP prefix PDUs sent to %s", client)
+        self.transport.writelines(prefixes)  # pyright: ignore
+        logger.debug("IP prefix PDUs sent to %s", self.client)
 
-    def write_end_of_data(
-        self, client: str, refresh: int = 3600, retry: int = 600, expire: int = 7200
-    ) -> None:
+    def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
         """
         Writes an End Of Data PDU to the wire
 
@@ -204,20 +178,18 @@ class Speaker(ABC):
             retry=retry,
             expire=expire,
         )
-        self.write(client, pdu)
-        logger.debug("End of data PDU sent to %s", client)
+        self.write(pdu)
+        logger.debug("End of data PDU sent to %s", self.client)
 
-    def write_cache_reset(self, client: str) -> None:
+    def write_cache_reset(self) -> None:
         """
         Writes a Cache Reset PDU to the wire
         """
         pdu = cache_reset.serialize()
-        self.write(client, pdu)
-        logger.debug("Cache reset PDU sent to %s", client)
+        self.write(pdu)
+        logger.debug("Cache reset PDU sent to %s", self.client)
 
-    def write_error_report(
-        self, client: str, error: int, pdu: bytes = bytes(), text: bytes = bytes()
-    ) -> None:
+    def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
         """
         Writes an Error Report PDU  to the wire
 
@@ -231,66 +203,62 @@ class Speaker(ABC):
             Error diagnostic message. Default: bytes()
         """
         _pdu = error_report.serialize(error=error, pdu=pdu, text=text)
-        self.write(client, _pdu)
-        logger.debug("Error report PDU sent to %s", client)
+        self.write(_pdu)
+        logger.debug("Error report PDU sent to %s", self.client)
 
     @abstractmethod
-    async def handle_pdu(self, client: str, header: RTRHeader, buffer: bytes) -> None:
+    def handle_pdu(self, header: RTRHeader, data: bytes) -> None:
         """
         Handles the inbound PDU.
 
         header: RTRHeader
             The fixed header part of the PDU
 
-        buffer: bytes
+        data: bytes
             The entire content of the PDU
         """
         raise NotImplementedError
 
-    def raise_on_error_report(self, buffer: bytes):
+    def raise_on_error_report(self, data: bytes):
         """
         Handles the Error Report PDU and raises a PDUError
 
         Arguments:
         ----------
-        buffer: bytes
+        data: bytes
             The Error Report PDU binary data
         """
         # https://datatracker.ietf.org/doc/html/rfc8210#section-12
-        pdu = error_report.unserialize(buffer)
+        pdu = error_report.unserialize(data)
 
         message = pdu["text"] or ""
 
         match pdu["error"]:
             case 0:
-                raise CorruptDataError(message=message, buffer=pdu["pdu"])
+                raise CorruptDataError(message=message, data=pdu["pdu"])
             case 1:
-                raise InternalError(message=message, buffer=pdu["pdu"])
+                raise InternalError(message=message, data=pdu["pdu"])
             case 2:
-                raise NoDataAvailableError(message=message, buffer=pdu["pdu"])
+                raise NoDataAvailableError(message=message, data=pdu["pdu"])
             case 3:
-                raise InvalidRequestError(message=message, buffer=pdu["pdu"])
+                raise InvalidRequestError(message=message, data=pdu["pdu"])
             case 4:
-                raise UnsupportedProtocolVersionError(message=message, buffer=pdu["pdu"])
+                raise UnsupportedProtocolVersionError(message=message, data=pdu["pdu"])
             case 5:
-                raise UnsupportedPDUTypeError(message=message, buffer=pdu["pdu"])
+                raise UnsupportedPDUTypeError(message=message, data=pdu["pdu"])
             case 6:
-                raise WithdrawalofUnknownRecordError(message=message, buffer=pdu["pdu"])
+                raise WithdrawalofUnknownRecordError(message=message, data=pdu["pdu"])
             case 7:
-                raise DuplicateAnnouncementReceivedError(message=message, buffer=pdu["pdu"])
+                raise DuplicateAnnouncementReceivedError(message=message, data=pdu["pdu"])
             case 8:
-                raise UnexpectedProtocolVersionError(message=message, buffer=pdu["pdu"])
+                raise UnexpectedProtocolVersionError(message=message, data=pdu["pdu"])
             case _:
                 ...
 
-    def handle_pdu_error_exception(
-        self, client: str, header: RTRHeader | None, error: PDUError
-    ) -> bool:
+    def handle_pdu_error_exception(self, header: RTRHeader | None, error: PDUError) -> bool:
         """
         Handles PDUErrors
 
-        client: str
-            Client ID
         header: RTRHeader | None
             The fixed header part of the PDU
         error: PDUError
@@ -301,85 +269,84 @@ class Speaker(ABC):
         bool: Whether is the error is fatal or not
         """
         if error.fatal:
-            logger.info("Fatal error while handling a PDU from %s: %s", client, str(error))
+            logger.info("Fatal error while handling a PDU from %s: %s", self.client, str(error))
         else:
             logger.info(
                 "Non fatal error while handling a PDU from %s: %s",
-                client,
+                self.client,
                 str(error),
             )
 
         if header is None or header["type"] != error_report.TYPE:
             self.write_error_report(
-                client=client, error=error.code, pdu=error.buffer, text=bytes(str(error), "utf-8")
+                error=error.code, pdu=error.data, text=bytes(str(error), "utf-8")
             )
 
         return error.fatal
 
-    async def client_connected_cb(
-        self, reader: asyncio.streams.StreamReader, writer: asyncio.streams.StreamWriter
-    ):
+    def connection_made(self, transport: asyncio.Transport):  # pyright: ignore
         """
-        Callback invoked by the asyncio TCP server when a new client is connected.
-        Implemente the sequences of PDU transmissions for the Cache.
+        Called when a connection is made.
+
+        transport: asyncio.Transport
+             Transport representing the connection.
+        """
+        # Find the remote socket data
+        host, port = transport.get_extra_info("peername")
+        self.client = f"{host}:{port}"
+        # Set the reader and writer streams for this client
+        self.transport = transport
+
+        logger.info("New client connected: %s", self.client)
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        """
+        Called when the connection is lost or closed.
+
+        exc: Exception | None
+            The exception that forced the connection to be closed
+        """
+        if exc is not None:
+            try:
+                raise exc
+            except ConnectionResetError:
+                logger.info("Connection reset by client: %s", self.client)
+            except BrokenPipeError:
+                logger.info("Connection died unexpectedly: %s", self.client)
+
+        logger.info("Client disconnected: %s", self.client)
+
+        # Close the writer stream
+        if not self.transport.is_closing():
+            self.transport.close()
+
+    def data_received(self, data: bytes):
+        """
+        Called when some data is received.
 
         Arguments:
         ----------
-        reader: asyncio.streams.StreamReader
-            The reader object as passed by the asyncio TCP server
-        writer: asyncio.streams.StreamWriter
-            The writer object as passed by the asyncio TCP server
+        data: bytes
+            The received data
         """
+        # Create empty `data` in case the PDU is too short and an error is raised
+        header = None
 
-        # Find the remote socket data
-        host, port = writer.get_extra_info("peername")
-        client = f"{host}:{port}"
-        # Set the reader and writer streams for this client
-        self.streams[client] = Streams(reader=reader, writer=writer)
-
-        logger.info("New client connected: %s", client)
-
-        while not reader.at_eof():
-            # Create empty `buffer` in case the PDU is too short and an error is raised
-            header = None
-            buffer = bytes()
-
-            try:
-                # Read and parse the header
-                buffer, header = await self.parse_header(client)
-
-                # Version negotiation
-                if self.version is None:
-                    self.version = header["version"]
-                elif self.version != header["version"]:
-                    raise UnexpectedProtocolVersionError(
-                        f"Negotatited version is {self.version}, received {header["version"]}"
-                    )
-
-                # Find if there's more to read
-                remaining_bytes = header["length"] - 8
-                if remaining_bytes:
-                    # Read the rest of the PDU
-                    buffer = buffer + await self.read(client, remaining_bytes)
-
-                # Handle the PDU
-                await self.handle_pdu(client, header, buffer)
-            except PDUError as error:
-                exit_loop = self.handle_pdu_error_exception(client, header, error)
-                if exit_loop:
-                    break
-            except ConnectionResetError:
-                logger.info("Connection reset by client: %s", client)
-                break
-            except BrokenPipeError:
-                logger.info("Connection died unexpectedly: %s", client)
-                break
-
-        logger.info("Client disconnected: %s", client)
-
-        # Close the writer stream
-        writer.close()
         try:
-            await writer.wait_closed()
-        except BrokenPipeError:
-            pass
+            # Read and parse the header
+            header = self.parse_header(data)
+
+            # Version negotiation
+            if self.version is None:
+                self.version = header["version"]
+            elif self.version != header["version"]:
+                raise UnexpectedProtocolVersionError(
+                    f"Negotatited version is {self.version}, received {header["version"]}"
+                )
+
+            # Handle the PDU
+            self.handle_pdu(header, data)
+        except PDUError as error:
+            exit_loop = self.handle_pdu_error_exception(header, error)
+            if exit_loop:
+                self.transport.close()

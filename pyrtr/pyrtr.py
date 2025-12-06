@@ -11,7 +11,13 @@ from pyrtr.rtr.cache import Cache
 logger = logging.getLogger(__name__)
 
 
-async def json_reloader(path: str | os.PathLike[str], cache: Cache, sleep: int = 1800) -> None:
+async def json_reloader(
+    path: str | os.PathLike[str],
+    rpki_client: RPKIClient,
+    cache_registry: dict[str, Cache],
+    expire: int = 7200,
+    sleep: int = 1800,
+) -> None:
     """
     Reloads the content of the RPKI JSON output. Holds `sleeps` seconds between every attempt
 
@@ -19,34 +25,101 @@ async def json_reloader(path: str | os.PathLike[str], cache: Cache, sleep: int =
     ----------
     path: str | os.PathLike[str]
         The path pointing to the JSON file
-    cache: Cache
-        The RTR Cache instance to update
-    refresh: int
-        Refresh Interval in seconds. Default: 3600
+    rpki_client: RPKIClient instance
+        RPKIClient instance
+    cache_registry: dict[str, Cache]
+        The Cache registry
+    expire: int
+        Expire Interval in seconds: Expire: 7200
+    sleep: int
+        Sleep interval in seconds. Default: 1800
     """
     serial: int = 0
 
     while True:
         # Remove stale entries
-        cache.rpki_client.purge(cache.expire)
+        rpki_client.purge(expire)
         # Load new entris
-        await cache.rpki_client.load(path)
-        logger.info("JSON file reloaded: %d prefixes", len(cache.rpki_client.prefixes))
+        await rpki_client.load(path)
+        logger.info("JSON file reloaded: %d prefixes", len(rpki_client.prefixes))
 
-        # Notify clients if needed
-        if serial != cache.rpki_client.serial:
-            for client in cache.streams:
+        for cache in cache_registry.values():
+            # Notify clients if needed
+            if serial != cache.rpki_client.serial:
                 try:
-                    cache.write_serial_notify(client=client)
-                    await cache.drain(client)
+                    cache.write_serial_notify()
                 except ConnectionResetError:
                     pass
-            serial = cache.rpki_client.serial
+                serial = cache.rpki_client.serial
 
+        logger.debug("JSON file will be reloaded in: %d seconds", sleep)
         await asyncio.sleep(sleep)
 
 
-async def rtr_server(host: str, port: int, cache: Cache):  # pylint: disable=too-many-arguments
+def create_cache_instance(  # pylint: disable=too-many-arguments
+    session: int,
+    rpki_client: RPKIClient,
+    cache_registry: dict[str, Cache],
+    *,
+    refresh: int = 3600,
+    expire: int = 600,
+    retry: int = 7200,
+) -> Cache:
+    """
+    Creates a Cache instance that registers itself to the registry
+
+    Arguments:
+    ----------
+    session: str
+        The session ID
+    rpki_client: RPKIClient instance
+        RPKIClient instance
+    cache_registry: dict[str, Cache]
+        The Cache registry
+    refresh: int
+        Refresh Interval in seconds. Default: 3600
+    retry: int
+        Retry Interval in seconds. Default: 600
+    expire: int
+        Expire Interval in seconds: Expire: 7200
+
+    Returns:
+    --------
+    Cache: The cache instance
+    """
+
+    def register_cache(_id: str, _cache: Cache) -> None:
+        cache_registry[_id] = _cache
+        logger.info("Registered cache: %s", _id)
+
+    def unregister_cache(_id: str) -> None:
+        del cache_registry[_id]
+        logger.info("Unregisterd cache: %s", _id)
+
+    cache = Cache(
+        session,
+        rpki_client,
+        register_callback=register_cache,
+        unregister_callback=unregister_cache,
+        refresh=refresh,
+        retry=retry,
+        expire=expire,
+    )
+
+    return cache
+
+
+async def rtr_server(  # pylint: disable=too-many-arguments
+    host: str,
+    port: int,
+    session: int,
+    rpki_client: RPKIClient,
+    cache_registry: dict[str, Cache],
+    *,
+    refresh: int = 3600,
+    expire: int = 600,
+    retry: int = 7200,
+):
     """
     Starts a local async RTR server and binds it to the specified host and port
 
@@ -56,11 +129,32 @@ async def rtr_server(host: str, port: int, cache: Cache):  # pylint: disable=too
         The host to bind to
     port: int
         The TCP port to bind to
-    cache: Cache
-        The RTR Cache instance to send data to
+    rpki_client: RPKIClient instance
+        RPKIClient instance
+    cache_registry: Cache
+        The RTR Cache registry
+    refresh: int
+        Refresh Interval in seconds. Default: 3600
+    retry: int
+        Retry Interval in seconds. Default: 600
+    expire: int
+        Expire Interval in seconds: Expire: 7200
     """
     # Initialize server
-    server = await asyncio.start_server(cache.client_connected_cb, host, port)
+    loop = asyncio.get_running_loop()
+
+    server = await loop.create_server(
+        lambda: create_cache_instance(
+            session,
+            rpki_client,
+            cache_registry,
+            refresh=refresh,
+            retry=retry,
+            expire=expire,
+        ),
+        host,
+        port,
+    )
 
     # Find the sockets the server will bind to
     listening_sockets = ", ".join(
@@ -73,7 +167,7 @@ async def rtr_server(host: str, port: int, cache: Cache):  # pylint: disable=too
     )
 
     async with server:
-        logger.info("Listening on %s. Session: %i", listening_sockets, cache.session)
+        logger.info("Listening on %s. Session: %i", listening_sockets, session)
         # Start the server
         await server.serve_forever()
 
@@ -98,8 +192,6 @@ async def pyrtr(  # pylint: disable=too-many-arguments
         The TCP port to bind t
     path: str | os.PathLike[str]
         The path pointing to the JSON file
-    rpki_client: RPKIClient instance
-        RPKIClient instance
     refresh: int
         Refresh Interval in seconds. Default: 3600
     retry: int
@@ -110,9 +202,18 @@ async def pyrtr(  # pylint: disable=too-many-arguments
 
     rpki_client = RPKIClient()
     session: int = random.randrange(0, 65535)
-    cache = Cache(session, rpki_client, refresh=refresh, retry=retry, expire=expire)
+    cache_registry: dict[str, Cache] = {}
 
     await asyncio.gather(
-        json_reloader(path, cache, int(refresh / 2)),
-        rtr_server(host, port, cache),
+        json_reloader(path, rpki_client, cache_registry, expire, int(refresh / 2)),
+        rtr_server(
+            host,
+            port,
+            session,
+            rpki_client,
+            cache_registry,
+            refresh=refresh,
+            expire=expire,
+            retry=retry,
+        ),
     )
