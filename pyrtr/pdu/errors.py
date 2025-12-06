@@ -14,20 +14,20 @@ class PDUError(Exception):
     ----------
     message: str
         The error message
-    buffer: bytes
+    data: bytes
         The content of the PDU that triggered the error. Default: bytes()
     """
 
     code: int
     fatal: bool
     message: str
-    buffer: bytes
+    data: bytes
 
-    def __init__(self, message: str, buffer: bytes = bytes()):
+    def __init__(self, message: str, data: bytes = bytes()):
         super().__init__(message)
 
         self.message = message
-        self.buffer = buffer
+        self.data = data
 
 
 class CorruptDataError(PDUError):
