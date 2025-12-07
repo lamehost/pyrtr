@@ -1,6 +1,7 @@
 """Implements the pyrtr application"""
 
 import asyncio
+import functools
 import logging
 import os
 import random
@@ -56,6 +57,36 @@ async def json_reloader(
         await asyncio.sleep(sleep)
 
 
+def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
+    """
+    Registers the Cache instance to the Cache registry.
+
+    Arguments:
+    ----------
+    cache: Cache
+        Cache instance
+    cache_registry: dict[str, Cache]
+        Cache registry
+    """
+    cache_registry[cache.client] = cache
+    logger.info("Registered cache: %s", cache.client)
+
+
+def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
+    """
+    Unregisters the Cache instance from the Cache registry.
+
+    Arguments:
+    ----------
+    cache: Cache
+        Cache instance
+    cache_registry: dict[str, Cache]
+        Cache registry
+    """
+    del cache_registry[cache.client]
+    logger.info("Unregisterd cache: %s", cache.client)
+
+
 def create_cache_instance(  # pylint: disable=too-many-arguments
     session: int,
     rpki_client: RPKIClient,
@@ -88,19 +119,11 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
     Cache: The cache instance
     """
 
-    def register_cache(_id: str, _cache: Cache) -> None:
-        cache_registry[_id] = _cache
-        logger.info("Registered cache: %s", _id)
-
-    def unregister_cache(_id: str) -> None:
-        del cache_registry[_id]
-        logger.info("Unregisterd cache: %s", _id)
-
     cache = Cache(
         session,
         rpki_client,
-        register_callback=register_cache,
-        unregister_callback=unregister_cache,
+        connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
+        disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
         refresh=refresh,
         retry=retry,
         expire=expire,

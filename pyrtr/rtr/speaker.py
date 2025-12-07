@@ -6,7 +6,7 @@ import asyncio
 import logging
 import struct
 from abc import ABC, abstractmethod
-from typing import TypedDict
+from typing import Callable, Literal, Self, TypedDict
 
 from pyrtr.pdu import (
     cache_reset,
@@ -73,9 +73,20 @@ class Speaker(asyncio.Protocol, ABC):
     rpki_client: RPKIClient
     session: int
     transport: asyncio.BaseTransport
+    connect_callback: Callable[[Self], None] | Literal[False] = False
+    disconnect_callback: Callable[[Self], None] | Literal[False] = False
 
-    def __init__(self, session: int):
+    def __init__(
+        self,
+        session: int,
+        *,
+        connect_callback: Callable[[Self], None] | Literal[False] = False,
+        disconnect_callback: Callable[[Self], None] | Literal[False] = False,
+    ):
         self.session = session
+
+        self.connect_callback = connect_callback
+        self.disconnect_callback = disconnect_callback
 
     def parse_header(self, data: bytes) -> RTRHeader:
         """
@@ -299,6 +310,9 @@ class Speaker(asyncio.Protocol, ABC):
 
         logger.info("New client connected: %s", self.client)
 
+        if self.connect_callback:
+            self.connect_callback(self)
+
     def connection_lost(self, exc: Exception | None) -> None:
         """
         Called when the connection is lost or closed.
@@ -315,6 +329,9 @@ class Speaker(asyncio.Protocol, ABC):
                 logger.info("Connection died unexpectedly: %s", self.client)
 
         logger.info("Client disconnected: %s", self.client)
+
+        if self.disconnect_callback:
+            self.disconnect_callback(self)
 
         # Close the writer stream
         if not self.transport.is_closing():

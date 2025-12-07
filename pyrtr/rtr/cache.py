@@ -2,7 +2,6 @@
 Defines the RTR protocol sequence for the RTR Cache
 """
 
-import asyncio
 import logging
 from typing import Callable, Literal, Self, TypedDict
 
@@ -66,45 +65,21 @@ class Cache(Speaker):
         session: int,
         rpki_client: RPKIClient,
         *,
-        register_callback: Callable[[str, Self], None] | Literal[False] = False,
-        unregister_callback: Callable[[str], None] | Literal[False] = False,
+        connect_callback: Callable[[Self], None] | Literal[False] = False,
+        disconnect_callback: Callable[[Self], None] | Literal[False] = False,
         refresh: int = 3600,
         expire: int = 600,
         retry: int = 7200,
     ):
         self.rpki_client = rpki_client
-        self.register_callback = register_callback
-        self.unregister_callback = unregister_callback
 
         self.refresh = refresh
         self.expire = expire
         self.retry = retry
 
-        super().__init__(session)
-
-    def connection_made(self, transport: asyncio.Transport):
-        """
-        Called when a connection is made.
-
-        transport: asyncio.Transport
-             Transport representing the connection.
-        """
-        super().connection_made(transport)
-
-        if self.register_callback:
-            self.register_callback(self.client, self)
-
-    def connection_lost(self, exc: Exception | None) -> None:
-        """
-        Called when the connection is lost or closed.
-
-        exc: Exception | None
-            The exception that forced the connection to be closed
-        """
-        super().connection_lost(exc)  # pyright: ignore
-
-        if self.unregister_callback:
-            self.unregister_callback(self.client)
+        super().__init__(
+            session, connect_callback=connect_callback, disconnect_callback=disconnect_callback
+        )
 
     def handle_serial_query(self, data: bytes):
         """
