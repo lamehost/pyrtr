@@ -49,15 +49,6 @@ class FatalRTRError(Exception):
     """
 
 
-class Streams(TypedDict):
-    """
-    The set of streams that belong to a client
-    """
-
-    reader: asyncio.streams.StreamReader
-    writer: asyncio.streams.StreamWriter
-
-
 class Speaker(asyncio.Protocol, ABC):
     """
     Abstract Base Class that defines the RTR spekaer
@@ -68,7 +59,7 @@ class Speaker(asyncio.Protocol, ABC):
         The RTR session ID
     """
 
-    client: str
+    remote: str
     version: int | None = None
     rpki_client: RPKIClient
     session: int
@@ -126,7 +117,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         pdu = serial_notify.serialize(session=self.session, serial=self.rpki_client.serial)
         self.write(pdu)
-        logger.debug("Serial notify PDU sent to %s", self.client)
+        logger.debug("Serial notify PDU sent to %s", self.remote)
 
     def write_serial_query(self) -> None:
         """
@@ -134,7 +125,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         pdu = serial_query.serialize(session=self.session, serial=self.rpki_client.serial)
         self.write(pdu)
-        logger.debug("Serial query PDU sent to %s", self.client)
+        logger.debug("Serial query PDU sent to %s", self.remote)
 
     def write_reset_query(self) -> None:
         """
@@ -142,7 +133,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         pdu = serial_query.serialize(session=self.session, serial=self.rpki_client.serial)
         self.write(pdu)
-        logger.debug("Reset query PDU sent to %s", self.client)
+        logger.debug("Reset query PDU sent to %s", self.remote)
 
     def write_cache_response(self) -> None:
         """
@@ -150,7 +141,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         pdu = cache_response.serialize(session=self.session)
         self.write(pdu)
-        logger.debug("Cache response PDU sent to %s", self.client)
+        logger.debug("Cache response PDU sent to %s", self.remote)
 
     def write_ip_prefixes(self, prefixes: list[bytes]) -> None:
         """
@@ -162,7 +153,7 @@ class Speaker(asyncio.Protocol, ABC):
             List of serialized IP prefixes
         """
         self.transport.writelines(prefixes)  # pyright: ignore
-        logger.debug("IP prefix PDUs sent to %s", self.client)
+        logger.debug("IP prefix PDUs sent to %s", self.remote)
 
     def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
         """
@@ -190,7 +181,7 @@ class Speaker(asyncio.Protocol, ABC):
             expire=expire,
         )
         self.write(pdu)
-        logger.debug("End of data PDU sent to %s", self.client)
+        logger.debug("End of data PDU sent to %s", self.remote)
 
     def write_cache_reset(self) -> None:
         """
@@ -198,7 +189,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         pdu = cache_reset.serialize()
         self.write(pdu)
-        logger.debug("Cache reset PDU sent to %s", self.client)
+        logger.debug("Cache reset PDU sent to %s", self.remote)
 
     def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
         """
@@ -215,7 +206,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         _pdu = error_report.serialize(error=error, pdu=pdu, text=text)
         self.write(_pdu)
-        logger.debug("Error report PDU sent to %s", self.client)
+        logger.debug("Error report PDU sent to %s", self.remote)
 
     @abstractmethod
     def handle_pdu(self, header: RTRHeader, data: bytes) -> None:
@@ -230,7 +221,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         raise NotImplementedError
 
-    def raise_on_error_report(self, data: bytes):
+    def raise_on_error_report(self, data: bytes) -> None:
         """
         Handles the Error Report PDU and raises a PDUError
 
@@ -280,11 +271,11 @@ class Speaker(asyncio.Protocol, ABC):
         bool: Whether is the error is fatal or not
         """
         if error.fatal:
-            logger.info("Fatal error while handling a PDU from %s: %s", self.client, str(error))
+            logger.info("Fatal error while handling a PDU from %s: %s", self.remote, str(error))
         else:
             logger.info(
                 "Non fatal error while handling a PDU from %s: %s",
-                self.client,
+                self.remote,
                 str(error),
             )
 
@@ -295,7 +286,7 @@ class Speaker(asyncio.Protocol, ABC):
 
         return error.fatal
 
-    def connection_made(self, transport: asyncio.Transport):  # pyright: ignore
+    def connection_made(self, transport: asyncio.Transport) -> None:  # pyright: ignore
         """
         Called when a connection is made.
 
@@ -304,11 +295,9 @@ class Speaker(asyncio.Protocol, ABC):
         """
         # Find the remote socket data
         host, port = transport.get_extra_info("peername")
-        self.client = f"{host}:{port}"
-        # Set the reader and writer streams for this client
+        self.remote = f"{host}:{port}"
+        # Set the transport for this host
         self.transport = transport
-
-        logger.info("New client connected: %s", self.client)
 
         if self.connect_callback:
             self.connect_callback(self)
@@ -324,11 +313,9 @@ class Speaker(asyncio.Protocol, ABC):
             try:
                 raise exc
             except ConnectionResetError:
-                logger.info("Connection reset by client: %s", self.client)
+                logger.info("Connection reset by the remote host: %s", self.remote)
             except BrokenPipeError:
-                logger.info("Connection died unexpectedly: %s", self.client)
-
-        logger.info("Client disconnected: %s", self.client)
+                logger.info("Connection died unexpectedly: %s", self.remote)
 
         if self.disconnect_callback:
             self.disconnect_callback(self)
@@ -337,7 +324,7 @@ class Speaker(asyncio.Protocol, ABC):
         if not self.transport.is_closing():
             self.transport.close()
 
-    def data_received(self, data: bytes):
+    def data_received(self, data: bytes) -> None:
         """
         Called when some data is received.
 

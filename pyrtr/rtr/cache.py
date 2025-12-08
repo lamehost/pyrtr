@@ -3,6 +3,7 @@ Defines the RTR protocol sequence for the RTR Cache
 """
 
 import logging
+from asyncio import Transport
 from typing import Callable, Literal, Self, TypedDict
 
 from pyrtr.pdu import (
@@ -81,7 +82,17 @@ class Cache(Speaker):
             session, connect_callback=connect_callback, disconnect_callback=disconnect_callback
         )
 
-    def handle_serial_query(self, data: bytes):
+    def connection_made(self, transport: Transport) -> None:
+        super().connection_made(transport)
+
+        logger.info("New client connected: %s", self.remote)
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        super().connection_lost(exc)
+
+        logger.info("Client disconnected: %s", self.remote)
+
+    def handle_serial_query(self, data: bytes) -> None:
         """
         Implements the sequences of PDU transmissions to handle the Serial Query PDU as described by
         https://datatracker.ietf.org/doc/html/rfc8210#section-8.2
@@ -111,7 +122,7 @@ class Cache(Speaker):
             retry=self.retry,
         )
 
-    def handle_reset_query(self, data: bytes):
+    def handle_reset_query(self, data: bytes) -> None:
         """
         Implements the sequences of PDU transmissions to handle the Reset Query PDU as described by
         https://datatracker.ietf.org/doc/html/rfc8210#section-8.1
@@ -146,15 +157,15 @@ class Cache(Speaker):
         """
         match header["type"]:
             case serial_query.TYPE:
-                logger.debug("Serial query PDU received from %s", self.client)
+                logger.debug("Serial query PDU received from %s", self.remote)
                 self.handle_serial_query(data)
             case reset_query.TYPE:
-                logger.debug("Reset query PDU received from %s", self.client)
+                logger.debug("Reset query PDU received from %s", self.remote)
                 self.handle_reset_query(data)
             case cache_reset.TYPE:
-                logger.debug("Cache reset PDU received from %s", self.client)
+                logger.debug("Cache reset PDU received from %s", self.remote)
             case error_report.TYPE:
-                logger.debug("Error report PDU received from %s", self.client)
+                logger.debug("Error report PDU received from %s", self.remote)
                 self.raise_on_error_report(data)
             case _:
                 raise UnsupportedPDUTypeError(f"Unsupported PDU Type: {header["type"]}")
