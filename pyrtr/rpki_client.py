@@ -141,7 +141,7 @@ class RPKIClient:
         prefix = ip_network(roa["prefix"])
         if prefix.version == 4:
             return ipv4_prefix.serialize(
-                prefix=prefix.broadcast_address.packed,
+                prefix=prefix.network_address.packed,
                 prefix_length=prefix.prefixlen,
                 flags=flags,
                 max_length=roa["maxLength"],
@@ -149,7 +149,7 @@ class RPKIClient:
             )
 
         return ipv6_prefix.serialize(
-            prefix=prefix.broadcast_address.packed,
+            prefix=prefix.network_address.packed,
             prefix_length=prefix.prefixlen,
             flags=flags,
             max_length=roa["maxLength"],
