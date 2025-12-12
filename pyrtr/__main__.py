@@ -4,6 +4,7 @@ Main entrypoint for the package
 
 import asyncio
 import logging
+import sys
 
 from pyrtr.pyrtr import pyrtr
 from pyrtr.settings import Settings
@@ -29,16 +30,22 @@ def main():
     logger.info("Loglevel set to: %s", settings.LOGLEVEL)
 
     # Start the server
-    asyncio.run(
-        pyrtr(
-            str(settings.HOST),
-            settings.PORT,
-            settings.PATH,
-            refresh=settings.REFRESH,
-            retry=settings.RETRY,
-            expire=settings.EXPIRE,
+    try:
+        asyncio.run(
+            pyrtr(
+                str(settings.HOST),
+                settings.PORT,
+                settings.PATH,
+                refresh=settings.REFRESH,
+                retry=settings.RETRY,
+                expire=settings.EXPIRE,
+            )
         )
-    )
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by user (KeyboardInterrupt)")
+    except Exception as error:
+        logger.exception("Unhandled exception while running the server: %s", error)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
