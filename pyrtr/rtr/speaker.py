@@ -63,6 +63,7 @@ class Speaker(asyncio.Protocol, ABC):
     version: int | None = None
     rpki_client: RPKIClient
     session: int
+    current_serial: int = 0
     transport: asyncio.BaseTransport
     connect_callback: Callable[[Self], None] | Literal[False] = False
     disconnect_callback: Callable[[Self], None] | Literal[False] = False
@@ -115,6 +116,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Serial Notify PDU to the wire
         """
+        self.current_serial = self.rpki_client.serial
         pdu = serial_notify.serialize(session=self.session, serial=self.rpki_client.serial)
         self.write(pdu)
         logger.debug("Serial notify PDU sent to %s", self.remote)

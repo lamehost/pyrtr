@@ -35,23 +35,28 @@ async def json_reloader(
     sleep: int
         Sleep interval in seconds. Default: 1800
     """
-    serial: int = 0
-
     while True:
         # Remove stale entries
         rpki_client.purge(expire)
-        # Load new entris
-        await rpki_client.load(path)
+
+        try:
+            # Load new entries
+           await rpki_client.load(path)
+        except Exception as error:
+            logger.error("Unable to load the RPKI client JSON file: %s", error)
+            await asyncio.sleep(sleep)
+            continue
+
         logger.info("JSON file reloaded: %d prefixes", len(rpki_client.prefixes))
 
         for cache in cache_registry.values():
             # Notify clients if needed
-            if serial != cache.rpki_client.serial:
+            if cache.current_serial != cache.rpki_client.serial:
                 try:
                     cache.write_serial_notify()
+                    cache.current_serial = cache.rpki_client.serial
                 except ConnectionResetError:
-                    pass
-                serial = cache.rpki_client.serial
+                    logger.warning("Unable to notify serial to: %s", cache.remote)
 
         logger.debug("JSON file will be reloaded in: %d seconds", sleep)
         await asyncio.sleep(sleep)
