@@ -145,8 +145,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     cache_registry: dict[str, Cache],
     *,
     refresh: int = 3600,
-    expire: int = 600,
-    retry: int = 7200,
+    retry: int = 600,
+    expire: int = 7200,
 ):
     """
     Starts a local async RTR server and binds it to the specified host and port
