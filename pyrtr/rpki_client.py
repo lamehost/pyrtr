@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from ipaddress import ip_network
-from typing import TypedDict
+from typing import Tuple, TypedDict
 
 import aiofiles
 import orjson
@@ -200,33 +200,25 @@ class RPKIClient:
         diffs = []
         for _serial, _json in self.json.items():
             # Generate hashabale data structures
-            old_roas = {
-                _id: roa
+            old_roas: dict[Tuple[int, str, int], ROA] = {
+                key: roa
                 for roa in _json["content"]["roas"]
-                if (
-                    _id := str(
-                        orjson.dumps(roa, option=orjson.OPT_SORT_KEYS)  # pylint: disable=no-member
-                    )
-                )
+                if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
             }
 
-            new_roas = {
-                _id: roa
+            new_roas: dict[Tuple[int, str, int], ROA] = {
+                key: roa
                 for roa in new_json["roas"]
-                if (
-                    _id := str(
-                        orjson.dumps(roa, option=orjson.OPT_SORT_KEYS)  # pylint: disable=no-member
-                    )
-                )
+                if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
             }
 
             # Calculate changes
-            removed_roa_ids: set[str] = set(old_roas) - set(new_roas)
+            removed_roa_ids: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
             diffs = [
                 self.serialize_roa(roa, 0) for _id in removed_roa_ids if (roa := old_roas[_id])
             ]
 
-            added_roa_ids: set[str] = set(new_roas) - set(old_roas)
+            added_roa_ids: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
             diffs = diffs + [
                 self.serialize_roa(roa, 1) for _id in added_roa_ids if (roa := new_roas[_id])
             ]
@@ -245,5 +237,6 @@ class RPKIClient:
             timestamp=datetime.now(timezone.utc).timestamp(),
             diffs=[],
         )
+        logger.info("Serial changed to: %d", self.serial)
 
         return True
