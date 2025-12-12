@@ -88,8 +88,11 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     cache_registry: dict[str, Cache]
         Cache registry
     """
-    del cache_registry[cache.remote]
-    logger.info("Unregisterd cache: %s", cache.remote)
+    try:
+        del cache_registry[cache.remote]
+        logger.info("Unregisterd cache: %s", cache.remote)
+    except KeyError:
+        logger.error("Attempted to unregister a non existing cache client: %s", cache.remote)
 
 
 def create_cache_instance(  # pylint: disable=too-many-arguments
