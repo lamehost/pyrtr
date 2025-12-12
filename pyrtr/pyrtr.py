@@ -73,8 +73,8 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     cache_registry: dict[str, Cache]
         Cache registry
     """
-    cache_registry[cache.client] = cache
-    logger.info("Registered cache: %s", cache.client)
+    cache_registry[cache.remote] = cache
+    logger.info("Registered cache: %s", cache.remote)
 
 
 def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
@@ -88,8 +88,8 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     cache_registry: dict[str, Cache]
         Cache registry
     """
-    del cache_registry[cache.client]
-    logger.info("Unregisterd cache: %s", cache.client)
+    del cache_registry[cache.remote]
+    logger.info("Unregisterd cache: %s", cache.remote)
 
 
 def create_cache_instance(  # pylint: disable=too-many-arguments
