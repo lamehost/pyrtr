@@ -187,7 +187,7 @@ class RPKIClient:
         async with aiofiles.open(path, encoding="utf-8") as file:
             data = await file.read()
 
-        new_json_hash = hashlib.md5(data.encode("utf-8")).hexdigest()
+        new_json_hash = hashlib.sha256(data.encode("utf-8")).hexdigest()
         new_json: JSONContent = orjson.loads(data)  # pylint: disable=no-member
 
         # Check if the new and the current file are the same
