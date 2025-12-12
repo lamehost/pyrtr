@@ -118,7 +118,6 @@ class RPKIClient:
     """
 
     serial: int = 0
-    path: str | os.PathLike[str]
     json: dict[int, JSON] = {}
     prefixes: list[bytes] = []
 
@@ -213,14 +212,14 @@ class RPKIClient:
             }
 
             # Calculate changes
-            removed_roa_ids: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
+            removed_roa_keys: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
             diffs = [
-                self.serialize_roa(roa, 0) for _id in removed_roa_ids if (roa := old_roas[_id])
+                self.serialize_roa(roa, 0) for key in removed_roa_keys if (roa := old_roas[key])
             ]
 
-            added_roa_ids: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
+            added_roa_keys: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
             diffs = diffs + [
-                self.serialize_roa(roa, 1) for _id in added_roa_ids if (roa := new_roas[_id])
+                self.serialize_roa(roa, 1) for key in added_roa_keys if (roa := new_roas[key])
             ]
 
             # Add a new list of changes
