@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     LOGLEVEL: str = "INFO"
 
     HOST: IPv4Address | IPv6Address = IPv4Address("127.0.0.1")
-    PORT: Annotated[int, Field(gt=0, ls=65536)] = 8323  # pyright: ignore[reportCallIssue]
+    PORT: Annotated[int, Field(gt=0, lt=65536)] = 8323  # pyright: ignore[reportCallIssue]
     PATH: str | os.PathLike[str] = "json"
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6
