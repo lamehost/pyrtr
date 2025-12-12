@@ -184,10 +184,10 @@ class RPKIClient:
         --------
         bool: True if the file was loaded, False if it was ignored
         """
-        async with aiofiles.open(path, encoding="utf-8") as file:
-            data = await file.read()
+        async with aiofiles.open(path, mode="rb") as file:
+            data: bytes = await file.read()
 
-        new_json_hash = hashlib.sha256(data.encode("utf-8")).hexdigest()
+        new_json_hash = hashlib.sha256(data).hexdigest()
         new_json: JSONContent = orjson.loads(data)  # pylint: disable=no-member
 
         # Check if the new and the current file are the same
