@@ -41,7 +41,7 @@ async def json_reloader(
 
         try:
             # Load new entries
-           await rpki_client.load(path)
+            await rpki_client.load(path)
         except Exception as error:
             logger.error("Unable to load the RPKI client JSON file: %s", error)
             await asyncio.sleep(sleep)
