@@ -1,6 +1,7 @@
 """Implements the application settings parser"""
 
 import os
+from enum import Enum
 from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated
 
@@ -8,10 +9,23 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+class LogLevelEnums(str, Enum):
+    """
+    Supported logging levels
+    """
+
+    FATAL = "FATAL"
+    CRITICAL = "CRITICAL"
+    ERROR = "ERROR"
+    WARNING = "WARNING"
+    INFO = "INFO"
+    DEBUG = "DEBUG"  # NOSONAR
+
+
 class Settings(BaseSettings):
     """Application settings parser"""
 
-    LOGLEVEL: str = "INFO"
+    LOGLEVEL: LogLevelEnums = LogLevelEnums.INFO
 
     HOST: IPv4Address | IPv6Address = IPv4Address("127.0.0.1")
     PORT: Annotated[int, Field(gt=0, lt=65536)] = 8323  # pyright: ignore[reportCallIssue]
