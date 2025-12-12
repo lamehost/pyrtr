@@ -98,8 +98,8 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
     cache_registry: dict[str, Cache],
     *,
     refresh: int = 3600,
-    expire: int = 600,
-    retry: int = 7200,
+    retry: int = 600,
+    expire: int = 7200,
 ) -> Cache:
     """
     Creates a Cache instance that registers itself to the registry

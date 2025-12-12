@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6
     REFRESH: Annotated[int, Field(gt=0, ls=86401)] = 3600  # pyright: ignore[reportCallIssue]
-    RETRY: Annotated[int, Field(gt=0, ls=7201)] = 3600  # pyright: ignore[reportCallIssue]
+    RETRY: Annotated[int, Field(gt=0, ls=7201)] = 600  # pyright: ignore[reportCallIssue]
     EXPIRE: Annotated[int, Field(gt=599, ls=172801)] = 7200  # pyright: ignore[reportCallIssue]
 
     model_config = SettingsConfigDict(env_prefix="PYRTR_")
