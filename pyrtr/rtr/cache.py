@@ -7,12 +7,12 @@ from asyncio import Transport
 from typing import Callable, Literal, Self, TypedDict
 
 from pyrtr.pdu import (
-    cache_reset,
     error_report,
     reset_query,
     serial_query,
 )
 from pyrtr.pdu.errors import (
+    CorruptDataError,
     UnsupportedPDUTypeError,
 )
 from pyrtr.rpki_client import RPKIClient
@@ -105,9 +105,13 @@ class Cache(Speaker):
         # Validates the PDU
         pdu = serial_query.unserialize(data)
 
+        if pdu['session'] != self.session:
+            raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
+
         serial = int(pdu["serial"])
         try:
-            prefixes = self.rpki_client.json[serial]["diffs"]
+            prefixes = self.rpki_client.json[serial]["diffs"]["prefixes"]
+            router_keys = self.rpki_client.json[serial]["diffs"]["router_keys"]
         except KeyError:
             # Send Cache Reset in case the serial doesn't exist anymore
             self.write_cache_reset()
@@ -115,6 +119,7 @@ class Cache(Speaker):
 
         self.write_cache_response()
         self.write_ip_prefixes(prefixes=prefixes)
+        self.write_router_keys(router_keys=router_keys)
 
         self.write_end_of_data(
             refresh=self.refresh,
@@ -138,6 +143,7 @@ class Cache(Speaker):
         self.write_cache_response()
 
         self.write_ip_prefixes(prefixes=self.rpki_client.prefixes)
+        self.write_router_keys(router_keys=self.rpki_client.router_keys)
 
         self.write_end_of_data(
             refresh=self.refresh,
@@ -162,8 +168,6 @@ class Cache(Speaker):
             case reset_query.TYPE:
                 logger.debug("Reset query PDU received from %s", self.remote)
                 self.handle_reset_query(data)
-            case cache_reset.TYPE:
-                logger.debug("Cache reset PDU received from %s", self.remote)
             case error_report.TYPE:
                 logger.debug("Error report PDU received from %s", self.remote)
                 self.raise_on_error_report(data)

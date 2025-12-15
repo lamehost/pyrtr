@@ -42,12 +42,12 @@ async def json_reloader(
         try:
             # Load new entries
             await rpki_client.load(path)
-        except Exception as error:
+        except Exception as error:  # pylint: disable=broad-exception-caught
             logger.error("Unable to load the RPKI client JSON file: %s", error)
             await asyncio.sleep(sleep)
             continue
 
-        logger.info("JSON file reloaded: %d prefixes", len(rpki_client.prefixes))
+        logger.info("JSON file reloaded: %d prefixes, %d BGPsec Keys", len(rpki_client.prefixes), len(rpki_client.router_keys))
 
         for cache in cache_registry.values():
             # Notify clients if needed

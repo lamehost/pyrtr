@@ -193,6 +193,18 @@ class Speaker(asyncio.Protocol, ABC):
         self.write(pdu)
         logger.debug("Cache reset PDU sent to %s", self.remote)
 
+    def write_router_keys(self, router_keys: list[bytes]) -> None:
+        """
+        Writes Router Keys to the wire
+
+        Arguments:
+        ----------
+        list[bytes]:
+            List of serialized Router Keys
+        """
+        self.transport.writelines(router_keys)  # pyright: ignore
+        logger.debug("Router keys PDUs sent to %s", self.remote)
+
     def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
         """
         Writes an Error Report PDU  to the wire
