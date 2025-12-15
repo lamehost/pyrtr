@@ -43,7 +43,7 @@ def main():
         )
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user (KeyboardInterrupt)")
-    except Exception as error:
+    except Exception as error:  # pylint: disable=broad-exception-caught
         logger.exception("Unhandled exception while running the server: %s", error)
         sys.exit(1)
 
