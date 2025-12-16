@@ -141,7 +141,7 @@ class Cache(Speaker):
         reset_query.unserialize(data)
 
         if not self.rpki_client.serial:
-            raise NoDataAvailableError(f"No data available yet")
+            raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()
 
