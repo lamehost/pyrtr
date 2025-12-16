@@ -9,6 +9,7 @@ from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
 VERSION = 1
 TYPE = 9
+# The drawing in the RFC does not relfect the true size of the PDU
 LENGTH = 123
 
 
