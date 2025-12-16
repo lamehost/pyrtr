@@ -6,6 +6,9 @@ import logging
 from asyncio import Transport
 from typing import Callable, Literal, Self, TypedDict
 
+from pyrtr.rpki_client import RPKIClient
+from pyrtr.rtr.speaker import Speaker
+
 from .pdu import (
     error_report,
     reset_query,
@@ -16,8 +19,6 @@ from .pdu.errors import (
     NoDataAvailableError,
     UnsupportedPDUTypeError,
 )
-from pyrtr.rpki_client import RPKIClient
-from pyrtr.rtr.speaker import Speaker
 
 logger = logging.getLogger(__name__)
 

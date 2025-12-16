@@ -8,6 +8,8 @@ import struct
 from abc import ABC, abstractmethod
 from typing import Callable, Literal, Self, TypedDict
 
+from pyrtr.rpki_client import RPKIClient
+
 from .pdu import (
     cache_reset,
     cache_response,
@@ -28,7 +30,6 @@ from .pdu.errors import (
     UnsupportedProtocolVersionError,
     WithdrawalofUnknownRecordError,
 )
-from pyrtr.rpki_client import RPKIClient
 
 logger = logging.getLogger(__name__)
 
