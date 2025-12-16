@@ -4,6 +4,7 @@ import base64
 import hashlib
 import logging
 import os
+from collections.abc import Generator
 from datetime import datetime, timezone
 from ipaddress import ip_network
 from typing import Tuple, TypedDict
@@ -106,8 +107,10 @@ class JSONContent(TypedDict):
 
 class JSONDiffs(TypedDict):
     """Defines the data structure representing the objects in the JSON file"""
+
     prefixes: list[bytes]
     router_keys: list[bytes]
+
 
 class JSON(TypedDict):
     """Defines the data structure representing the JSON file"""
@@ -128,6 +131,90 @@ class RPKIClient:
     prefixes: list[bytes] = []
     router_keys: list[bytes] = []
 
+    def calculate_roa_diffs(
+        self, old_json_roas: list[ROA], new_json_roas: list[ROA]
+    ) -> Generator[bytes]:
+        """
+        Calculates the differences in the ROAs between the old and the new JSON file and yields
+        prefix PDUs.
+
+        Arguments:
+        ----------
+        old_json_roas: list[ROA]
+            ROAs in the old JSON file
+        new_json_roas: list[ROA]
+            ROAs in the new JSON file
+
+        Returns:
+        --------
+        Generator[bytes]: Yields serialized prefix PDUs
+        """
+        # Generate hashabale data structures
+        old_roas: dict[Tuple[int, str, int], ROA] = {
+            key: roa
+            for roa in old_json_roas
+            if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
+        }
+
+        new_roas: dict[Tuple[int, str, int], ROA] = {
+            key: roa
+            for roa in new_json_roas
+            if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
+        }
+
+        # Yield changes
+        removed_roa_keys: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
+        for key in removed_roa_keys:
+            yield self.serialize_prefixes(old_roas[key], 0)
+
+        added_roa_keys: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
+        for key in added_roa_keys:
+            yield self.serialize_prefixes(new_roas[key], 1)
+
+    def calculate_bgpsec_key_diffs(
+        self, old_json_bgpsec_keys: list[BGPSecKey], new_json_bgpsec_keys: list[BGPSecKey]
+    ) -> Generator[bytes]:
+        """
+        Calculates the differences in the BGPSec Keys between the old and the new JSON file and
+        yields prefix PDUs.
+
+        Arguments:
+        ----------
+        old_json_roas: list[BGPSecKey]
+            BGPSec Keys in the old JSON file
+        new_json_roas: list[BGPSecKey]
+            BGPSec Keys in the new JSON file
+
+        Returns:
+        --------
+        Generator[bytes]: Yields serialized router key PDUs
+        """
+        # Generate hashabale data structures
+        old_bgpsec_keys: dict[Tuple[int, str, str], BGPSecKey] = {
+            key: bgpsec_key
+            for bgpsec_key in old_json_bgpsec_keys
+            if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
+        }
+
+        new_bgpsec_keys: dict[Tuple[int, str, str], BGPSecKey] = {
+            key: bgpsec_key
+            for bgpsec_key in new_json_bgpsec_keys
+            if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
+        }
+
+        # Yield changes
+        removed_bgpsec_key_keys: set[Tuple[int, str, str]] = set(old_bgpsec_keys) - set(
+            new_bgpsec_keys
+        )
+        for key in removed_bgpsec_key_keys:
+            yield self.serialize_bgpsec_key(old_bgpsec_keys[key], 0)
+
+        added_bgpsec_key_keys: set[Tuple[int, str, str]] = set(new_bgpsec_keys) - set(
+            old_bgpsec_keys
+        )
+        for key in added_bgpsec_key_keys:
+            yield self.serialize_bgpsec_key(new_bgpsec_keys[key], 1)
+
     def serialize_bgpsec_key(self, bgpsec_key: BGPSecKey, flags: int) -> bytes:
         """
         Serialize the BGPSec Key to bytes
@@ -144,14 +231,15 @@ class RPKIClient:
         --------
         bytes: The serialized BGPSec Key
         """
-        ski = base64.b16decode(bgpsec_key['ski'])
-        pubkey = base64.b64decode(bgpsec_key['pubkey'])
+        # This is not stated anywhere in the rpki-client docs
+        ski = base64.b16decode(bgpsec_key["ski"])
+        pubkey = base64.b64decode(bgpsec_key["pubkey"])
 
         return router_key.serialize(
             flags=flags,
             ski=ski,
             spki=pubkey,
-            asn=bgpsec_key['asn'],
+            asn=bgpsec_key["asn"],
         )
 
     def serialize_prefixes(self, roa: ROA, flags: int) -> bytes:
@@ -229,66 +317,17 @@ class RPKIClient:
         except KeyError:
             pass
 
-        diffs: JSONDiffs = {"prefixes": [], "router_keys": []}
-        for _serial, _json in self.json.items():
-            # Generate hashabale data structures
-            old_roas: dict[Tuple[int, str, int], ROA] = {
-                key: roa
-                for roa in _json["content"]["roas"]
-                if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
-            }
-
-            new_roas: dict[Tuple[int, str, int], ROA] = {
-                key: roa
-                for roa in new_json["roas"]
-                if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
-            }
-
-            old_bgpsec_keys: dict[Tuple[int, str, str], BGPSecKey] = {
-                key: bgpsec_key
-                for bgpsec_key in _json["content"]["bgpsec_keys"]
-                if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
-            }
-
-            new_bgpsec_keys: dict[Tuple[int, str, str], BGPSecKey] = {
-                key: bgpsec_key
-                for bgpsec_key in new_json["bgpsec_keys"]
-                if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
-            }
-
-            # Calculate changes
-            removed_roa_keys: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
-            diffs["prefixes"] = [
-                self.serialize_prefixes(roa, 0)
-                for key in removed_roa_keys
-                if (roa := old_roas[key])
-            ]
-
-            added_roa_keys: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
-            diffs["prefixes"] = diffs["prefixes"] + [
-                self.serialize_prefixes(roa, 1) for key in added_roa_keys if (roa := new_roas[key])
-            ]
-
-            removed_bgpsec_key_keys: set[Tuple[int, str, str]] = (
-                set(old_bgpsec_keys) - set(new_bgpsec_keys)
+        for serial, old_json in self.json.items():
+            prefixes: list[bytes] = list(
+                self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
             )
-            diffs["router_keys"] = [
-                self.serialize_bgpsec_key(bgpsec_key, 0)
-                for key in removed_bgpsec_key_keys
-                if (bgpsec_key := old_bgpsec_keys[key])
-            ]
-
-            added_bgpsec_key_keys: set[Tuple[int, str, str]] = (
-                set(new_bgpsec_keys) - set(old_bgpsec_keys)
+            router_keys: list[bytes] = list(
+                self.calculate_bgpsec_key_diffs(
+                    old_json["content"]["bgpsec_keys"], new_json["bgpsec_keys"]
+                )
             )
-            diffs["router_keys"] = diffs["router_keys"] + [
-                self.serialize_bgpsec_key(bgpsec_key, 1)
-                for key in added_bgpsec_key_keys
-                if (bgpsec_key := new_bgpsec_keys[key])
-            ]
-
             # Add a new list of changes
-            self.json[_serial]["diffs"] = diffs
+            self.json[serial]["diffs"] = JSONDiffs(prefixes=prefixes, router_keys=router_keys)
 
         # Update the list of prefixes
         self.prefixes = [self.serialize_prefixes(roa, 1) for roa in new_json["roas"]]
