@@ -47,7 +47,11 @@ async def json_reloader(
             await asyncio.sleep(sleep)
             continue
 
-        logger.info("JSON file reloaded: %d prefixes, %d BGPsec Keys", len(rpki_client.prefixes), len(rpki_client.router_keys))
+        logger.info(
+            "JSON file reloaded: %d prefixes, %d BGPsec Keys",
+            len(rpki_client.prefixes),
+            len(rpki_client.router_keys),
+        )
 
         for cache in cache_registry.values():
             # Notify clients if needed
