@@ -13,6 +13,7 @@ from .pdu import (
 )
 from .pdu.errors import (
     CorruptDataError,
+    NoDataAvailableError,
     UnsupportedPDUTypeError,
 )
 from pyrtr.rpki_client import RPKIClient
@@ -112,10 +113,8 @@ class Cache(Speaker):
         try:
             prefixes = self.rpki_client.json[serial]["diffs"]["prefixes"]
             router_keys = self.rpki_client.json[serial]["diffs"]["router_keys"]
-        except KeyError:
-            # Send Cache Reset in case the serial doesn't exist anymore
-            self.write_cache_reset()
-            return
+        except KeyError as error:
+            raise NoDataAvailableError(f"No data available for serial: {serial}") from error
 
         self.write_cache_response()
         self.write_ip_prefixes(prefixes=prefixes)
@@ -139,6 +138,9 @@ class Cache(Speaker):
         """
         # Validates the PDU
         reset_query.unserialize(data)
+
+        if not self.rpki_client.serial:
+            raise NoDataAvailableError(f"No data available yet")
 
         self.write_cache_response()
 
