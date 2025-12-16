@@ -105,7 +105,7 @@ class Cache(Speaker):
         # Validates the PDU
         pdu = serial_query.unserialize(data)
 
-        if pdu['session'] != self.session:
+        if pdu["session"] != self.session:
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
         serial = int(pdu["serial"])
