@@ -8,7 +8,7 @@ import struct
 from abc import ABC, abstractmethod
 from typing import Callable, Literal, Self, TypedDict
 
-from pyrtr.pdu import (
+from .pdu import (
     cache_reset,
     cache_response,
     end_of_data,
@@ -16,7 +16,7 @@ from pyrtr.pdu import (
     serial_notify,
     serial_query,
 )
-from pyrtr.pdu.errors import (
+from .pdu.errors import (
     CorruptDataError,
     DuplicateAnnouncementReceivedError,
     InternalError,

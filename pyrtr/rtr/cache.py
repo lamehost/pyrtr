@@ -6,12 +6,12 @@ import logging
 from asyncio import Transport
 from typing import Callable, Literal, Self, TypedDict
 
-from pyrtr.pdu import (
+from .pdu import (
     error_report,
     reset_query,
     serial_query,
 )
-from pyrtr.pdu.errors import (
+from .pdu.errors import (
     CorruptDataError,
     UnsupportedPDUTypeError,
 )

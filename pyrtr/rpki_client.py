@@ -12,7 +12,7 @@ from typing import Tuple, TypedDict
 import aiofiles
 import orjson
 
-from .pdu import ipv4_prefix, ipv6_prefix, router_key
+from pyrtr.rtr.pdu import ipv4_prefix, ipv6_prefix, router_key
 
 logger = logging.getLogger(__name__)
 
