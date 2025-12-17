@@ -225,6 +225,51 @@ class RPKIClient:
         for key in added_bgpsec_key_keys:
             yield self.serialize_bgpsec_key(version, new_bgpsec_keys[key], 1)
 
+    def serialize_unique_bgpsec_key(
+        self, version: int, bgpsec_keys: list[BGPSecKey]
+    ) -> Generator[bytes]:
+        """
+        Serialize a list of BGPSec Keus, while removing duplicates. The flags field is set to 1.
+
+        Arguments:
+        ----------
+        version: int
+            The version identifier
+        roas: list[BGPSecKey]
+            The list of BGPSec Keys to serialize
+
+        Returns:
+        --------
+            Generator[bytes]: Serialized BGPSec Keys
+        """
+        # Mapping everything into a dict and then returning the values removes the duplicates
+        unique_bgpsec_keys = {
+            (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]): bgpsec_key
+            for bgpsec_key in bgpsec_keys
+        }
+        for bgpsec_key in unique_bgpsec_keys.values():
+            yield self.serialize_bgpsec_key(version, bgpsec_key, 1)
+
+    def serialize_unique_vrps(self, version: int, roas: list[ROA]) -> Generator[bytes]:
+        """
+        Serialize a list of ROAS into VRPs, while removing duplicates. The flags field is set to 1.
+
+        Arguments:
+        ----------
+        version: int
+            The version identifier
+        roas: list[ROA]
+            The list of ROAs to serialize
+
+        Returns:
+        --------
+            Generator[bytes]: Serialized VRPs
+        """
+        # Mapping everything into a dict and then returning the values removes the duplicates
+        unique_roas = {(roa["asn"], roa["prefix"], roa["maxLength"]): roa for roa in roas}
+        for roa in unique_roas.values():
+            yield self.serialize_vrp(version, roa, 1)
+
     def serialize_bgpsec_key(self, version: int, bgpsec_key: BGPSecKey, flags: int) -> bytes:
         """
         Serialize the BGPSec Key to bytes
@@ -335,6 +380,7 @@ class RPKIClient:
             pass
 
         for serial, old_json in self.json.items():
+            # Re-generate diffs for each serial / version pair
             for version in self.versions:
                 vrps: list[bytes] = list(
                     self.calculate_roa_diffs(version, old_json["content"]["roas"], new_json["roas"])
@@ -349,23 +395,15 @@ class RPKIClient:
 
         for version in self.versions:
             # Update the list of VRPs
-            # Mapping everything into a dict and then returning the values removes the duplicates
             self.vrps[version] = list(
-                {
-                    key: self.serialize_vrp(version, roa, 1)
-                    for roa in new_json["roas"]
-                    if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
-                }.values()
+                self.serialize_unique_vrps(version=version, roas=new_json["roas"])
             )
 
             # Update the list of Router Keys
-            # Mapping everything into a dict and then returning the values removes the duplicates
             self.router_keys[version] = list(
-                {
-                    key: self.serialize_bgpsec_key(version, bgpsec_key, 1)
-                    for bgpsec_key in new_json["bgpsec_keys"]
-                    if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
-                }.values()
+                self.serialize_unique_bgpsec_key(
+                    version=version, bgpsec_keys=new_json["bgpsec_keys"]
+                )
             )
 
         # Save new JSON
