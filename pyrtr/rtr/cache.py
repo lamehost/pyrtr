@@ -110,6 +110,9 @@ class Cache(Speaker):
         if pdu["session"] != self.session:
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
+        if not self.rpki_client.serial:
+            raise NoDataAvailableError("No data available yet")
+
         serial = int(pdu["serial"])
         try:
             vrps = self.rpki_client.json[serial]["diffs"]["vrps"]
@@ -143,7 +146,7 @@ class Cache(Speaker):
         reset_query.unserialize(data)
 
         if not self.rpki_client.serial:
-            raise NoDataAvailableError("No data available")
+            raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()
 
