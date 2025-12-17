@@ -114,8 +114,10 @@ class Cache(Speaker):
         try:
             prefixes = self.rpki_client.json[serial]["diffs"]["prefixes"]
             router_keys = self.rpki_client.json[serial]["diffs"]["router_keys"]
-        except KeyError as error:
-            raise NoDataAvailableError(f"No data available for serial: {serial}") from error
+        except KeyError:
+            # Send Cache Reset in case the serial doesn't exist anymore
+            self.write_cache_reset()
+            return
 
         self.write_cache_response()
         self.write_ip_prefixes(prefixes=prefixes)
@@ -141,7 +143,9 @@ class Cache(Speaker):
         reset_query.unserialize(data)
 
         if not self.rpki_client.serial:
-            raise NoDataAvailableError("No data available yet")
+            # Send Cache Reset in case the serial doesn't exist anymore
+            self.write_cache_reset()
+            return
 
         self.write_cache_response()
 
