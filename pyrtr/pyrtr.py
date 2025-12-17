@@ -22,7 +22,7 @@ class RPKIClientStatus(TypedDict):
     """
 
     serial: int
-    prefixes: int
+    vrps: int
     router_keys: int
     last_update: str | None
 
@@ -66,7 +66,7 @@ async def https_server(
         status = Status(
             rpki_client=RPKIClientStatus(
                 serial=rpki_client.serial,
-                prefixes=len(rpki_client.prefixes),
+                vrps=len(rpki_client.vrps),
                 router_keys=len(rpki_client.router_keys),
                 last_update=rpki_client.last_update,
             ),
@@ -131,8 +131,8 @@ async def json_reloader(
             continue
 
         logger.info(
-            "JSON file reloaded: %d prefixes, %d BGPsec Keys",
-            len(rpki_client.prefixes),
+            "JSON file reloaded: %d VRPs, %d BGPsec Keys",
+            len(rpki_client.vrps),
             len(rpki_client.router_keys),
         )
 

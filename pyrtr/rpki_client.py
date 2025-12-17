@@ -108,7 +108,7 @@ class JSONContent(TypedDict):
 class JSONDiffs(TypedDict):
     """Defines the data structure representing the objects in the JSON file"""
 
-    prefixes: list[bytes]
+    vrps: list[bytes]
     router_keys: list[bytes]
 
 
@@ -129,7 +129,7 @@ class RPKIClient:
     # Serial equals 0 means no data is available
     serial: int = 0
     json: dict[int, JSON] = {}
-    prefixes: list[bytes] = []
+    vrps: list[bytes] = []
     router_keys: list[bytes] = []
     last_update: str | None = None
 
@@ -167,11 +167,11 @@ class RPKIClient:
         # Yield changes
         removed_roa_keys: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
         for key in removed_roa_keys:
-            yield self.serialize_prefixes(old_roas[key], 0)
+            yield self.serialize_vrp(old_roas[key], 0)
 
         added_roa_keys: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
         for key in added_roa_keys:
-            yield self.serialize_prefixes(new_roas[key], 1)
+            yield self.serialize_vrp(new_roas[key], 1)
 
     def calculate_bgpsec_key_diffs(
         self, old_json_bgpsec_keys: list[BGPSecKey], new_json_bgpsec_keys: list[BGPSecKey]
@@ -244,7 +244,7 @@ class RPKIClient:
             asn=bgpsec_key["asn"],
         )
 
-    def serialize_prefixes(self, roa: ROA, flags: int) -> bytes:
+    def serialize_vrp(self, roa: ROA, flags: int) -> bytes:
         """
         Serialize the ROA to bytes
 
@@ -320,7 +320,7 @@ class RPKIClient:
             pass
 
         for serial, old_json in self.json.items():
-            prefixes: list[bytes] = list(
+            vrps: list[bytes] = list(
                 self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
             )
             router_keys: list[bytes] = list(
@@ -329,10 +329,10 @@ class RPKIClient:
                 )
             )
             # Add a new list of changes
-            self.json[serial]["diffs"] = JSONDiffs(prefixes=prefixes, router_keys=router_keys)
+            self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=router_keys)
 
-        # Update the list of prefixes
-        self.prefixes = [self.serialize_prefixes(roa, 1) for roa in new_json["roas"]]
+        # Update the list of VRPs
+        self.vrps = [self.serialize_vrp(roa, 1) for roa in new_json["roas"]]
         self.router_keys = [
             self.serialize_bgpsec_key(bgpsec_key, 1) for bgpsec_key in new_json["bgpsec_keys"]
         ]
@@ -344,7 +344,7 @@ class RPKIClient:
             content=new_json,
             hash=new_json_hash,
             timestamp=datetime.now(timezone.utc).timestamp(),
-            diffs={"prefixes": [], "router_keys": []},
+            diffs={"vrps": [], "router_keys": []},
         )
         logger.info("Serial changed to: %d", self.serial)
 

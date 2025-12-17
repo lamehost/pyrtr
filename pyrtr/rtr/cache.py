@@ -16,7 +16,6 @@ from .pdu import (
 )
 from .pdu.errors import (
     CorruptDataError,
-    NoDataAvailableError,
     UnsupportedPDUTypeError,
 )
 
@@ -112,7 +111,7 @@ class Cache(Speaker):
 
         serial = int(pdu["serial"])
         try:
-            prefixes = self.rpki_client.json[serial]["diffs"]["prefixes"]
+            vrps = self.rpki_client.json[serial]["diffs"]["vrps"]
             router_keys = self.rpki_client.json[serial]["diffs"]["router_keys"]
         except KeyError:
             # Send Cache Reset in case the serial doesn't exist anymore
@@ -120,7 +119,7 @@ class Cache(Speaker):
             return
 
         self.write_cache_response()
-        self.write_ip_prefixes(prefixes=prefixes)
+        self.write_vrps(vrps=vrps)
         self.write_router_keys(router_keys=router_keys)
 
         self.write_end_of_data(
@@ -149,7 +148,7 @@ class Cache(Speaker):
 
         self.write_cache_response()
 
-        self.write_ip_prefixes(prefixes=self.rpki_client.prefixes)
+        self.write_vrps(vrps=self.rpki_client.vrps)
         self.write_router_keys(router_keys=self.rpki_client.router_keys)
 
         self.write_end_of_data(

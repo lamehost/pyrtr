@@ -146,16 +146,16 @@ class Speaker(asyncio.Protocol, ABC):
         self.write(pdu)
         logger.debug("Cache response PDU sent to %s", self.remote)
 
-    def write_ip_prefixes(self, prefixes: list[bytes]) -> None:
+    def write_vrps(self, vrps: list[bytes]) -> None:
         """
         Writes IP prefxies to the wire
 
         Arguments:
         ----------
         list[bytes]:
-            List of serialized IP prefixes
+            List of serialized VRPs
         """
-        self.transport.writelines(prefixes)  # pyright: ignore
+        self.transport.writelines(vrps)  # pyright: ignore
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
     def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
