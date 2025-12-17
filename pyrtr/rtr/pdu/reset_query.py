@@ -60,9 +60,6 @@ def unserialize(buffer: bytes, validate: bool = True) -> ResetQuery:
         if len(buffer) > LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
 
-        if fields[2] != 0:
-            raise CorruptDataError(f"The zero field is not zero: {fields[2]}")
-
     pdu: ResetQuery = {
         "version": fields[0],
         "type": fields[1],
