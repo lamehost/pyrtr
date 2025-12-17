@@ -2,14 +2,98 @@
 
 import asyncio
 import functools
+import json
 import logging
 import os
 import random
+from typing import TypedDict
+
+from aiohttp import web
 
 from pyrtr.rpki_client import RPKIClient
 from pyrtr.rtr.cache import Cache
 
 logger = logging.getLogger(__name__)
+
+
+class RPKIClientStatus(TypedDict):
+    """
+    Defines the set of metadata describing the status of the RPKIClient JSON file
+    """
+
+    serial: int
+    prefixes: int
+    router_keys: int
+    generated: str
+
+
+class Status(TypedDict):
+    """
+    Defines the set of metadata describing the application status
+    """
+
+    rpki_client: RPKIClientStatus
+    clients: int
+    session: int
+    pid: int
+
+
+async def https_server(
+    host: str, port: int, session: int, rpki_client: RPKIClient, cache_registry: dict[str, Cache]
+) -> web.TCPSite:
+    """
+    Runs the HTTP server for the /status endpoint.
+
+    Arguments:
+    ----------
+    host: str
+        The host to bind to
+    port: int
+        The TCP port to bind to
+    session: str
+        The session ID
+    rpki_client: RPKIClient instance
+        RPKIClient instance
+    cache_registry: Cache
+        The RTR Cache registry
+
+    Returns:
+    --------
+    web.TCPSite: The TCP server coroutine
+    """
+
+    async def handle_get_status(_: web.Request) -> web.Response:  # NOSONAR
+        rpki_json_build_time = ""
+        status = Status(
+            rpki_client=RPKIClientStatus(
+                serial=rpki_client.serial,
+                prefixes=len(rpki_client.prefixes),
+                router_keys=len(rpki_client.router_keys),
+                generated=rpki_json_build_time,
+            ),
+            clients=len(cache_registry),
+            session=session,
+            pid=os.getpid(),
+        )
+
+        return web.json_response(status, dumps=lambda data: json.dumps(data, indent=2))
+
+    webapp = web.Application()
+    webapp.router.add_get(
+        "/status",
+        handle_get_status,
+        allow_head=True,
+    )
+
+    runner = web.AppRunner(webapp)
+    await runner.setup()
+    site = web.TCPSite(runner, host, port)
+
+    logger.info("Status endpoint available at http://%s:%d/status", host, port)
+    await site.start()
+
+    while True:
+        await asyncio.sleep(60)
 
 
 async def json_reloader(
@@ -164,6 +248,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         The host to bind to
     port: int
         The TCP port to bind to
+    session: str
+        The session ID
     rpki_client: RPKIClient instance
         RPKIClient instance
     cache_registry: Cache
@@ -224,7 +310,7 @@ async def pyrtr(  # pylint: disable=too-many-arguments
     host: str
         The host to bind to
     port: int
-        The TCP port to bind t
+        The TCP port to bind to
     path: str | os.PathLike[str]
         The path pointing to the JSON file
     refresh: int
@@ -251,4 +337,5 @@ async def pyrtr(  # pylint: disable=too-many-arguments
             expire=expire,
             retry=retry,
         ),
+        https_server(host, 8080, session, rpki_client, cache_registry),
     )
