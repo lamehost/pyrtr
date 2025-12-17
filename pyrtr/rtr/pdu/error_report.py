@@ -85,6 +85,9 @@ def unserialize(buffer: bytes, validate: bool = True) -> ErrorReport:
         if fields[0] != VERSION:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
+        if fields[3] > 65535:
+            raise CorruptDataError(f"PDU is too long: {fields[2]}")
+
         if len(buffer) > fields[3]:
             raise CorruptDataError(f"The PDU is not {fields[3]} bytes long: {len(buffer)}")
 
