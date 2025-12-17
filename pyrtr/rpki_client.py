@@ -332,10 +332,24 @@ class RPKIClient:
             self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=router_keys)
 
         # Update the list of VRPs
-        self.vrps = [self.serialize_vrp(roa, 1) for roa in new_json["roas"]]
-        self.router_keys = [
-            self.serialize_bgpsec_key(bgpsec_key, 1) for bgpsec_key in new_json["bgpsec_keys"]
-        ]
+        # Mapping everything into a dict and then returning the values removes the duplicates
+        self.vrps = list(
+            {
+                key: self.serialize_vrp(roa, 1)
+                for roa in new_json["roas"]
+                if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
+            }.values()
+        )
+
+        # Update the list of Router Keys
+        # Mapping everything into a dict and then returning the values removes the duplicates
+        self.router_keys = list(
+            {
+                key: self.serialize_bgpsec_key(bgpsec_key, 1)
+                for bgpsec_key in new_json["bgpsec_keys"]
+                if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
+            }.values()
+        )
 
         # Save new JSON
         self.serial = self.serial + 1
