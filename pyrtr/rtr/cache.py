@@ -16,6 +16,7 @@ from .pdu import (
 )
 from .pdu.errors import (
     CorruptDataError,
+    NoDataAvailableError,
     UnsupportedPDUTypeError,
 )
 
@@ -142,9 +143,7 @@ class Cache(Speaker):
         reset_query.unserialize(data)
 
         if not self.rpki_client.serial:
-            # Send Cache Reset in case the serial doesn't exist anymore
-            self.write_cache_reset()
-            return
+            raise NoDataAvailableError("No data available")
 
         self.write_cache_response()
 
