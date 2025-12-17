@@ -24,7 +24,7 @@ class RPKIClientStatus(TypedDict):
     serial: int
     prefixes: int
     router_keys: int
-    generated: str
+    last_update: str | None
 
 
 class Status(TypedDict):
@@ -63,13 +63,12 @@ async def https_server(
     """
 
     async def handle_get_status(_: web.Request) -> web.Response:  # NOSONAR
-        rpki_json_build_time = ""
         status = Status(
             rpki_client=RPKIClientStatus(
                 serial=rpki_client.serial,
                 prefixes=len(rpki_client.prefixes),
                 router_keys=len(rpki_client.router_keys),
-                generated=rpki_json_build_time,
+                last_update=rpki_client.last_update,
             ),
             clients=len(cache_registry),
             session=session,

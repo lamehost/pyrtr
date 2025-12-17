@@ -131,6 +131,7 @@ class RPKIClient:
     json: dict[int, JSON] = {}
     prefixes: list[bytes] = []
     router_keys: list[bytes] = []
+    last_update: str | None = None
 
     def calculate_roa_diffs(
         self, old_json_roas: list[ROA], new_json_roas: list[ROA]
@@ -338,6 +339,7 @@ class RPKIClient:
 
         # Save new JSON
         self.serial = self.serial + 1
+        self.last_update = datetime.now(timezone.utc).isoformat()
         self.json[self.serial] = JSON(
             content=new_json,
             hash=new_json_hash,
