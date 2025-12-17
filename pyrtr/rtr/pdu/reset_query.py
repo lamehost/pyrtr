@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 2
 LENGTH = 8
 
@@ -22,18 +21,23 @@ class ResetQuery(TypedDict):
     length: int
 
 
-def serialize() -> bytes:
+def serialize(version: int) -> bytes:
     """
     Serializes the PDU
+
+    Arguments:
+    ----------
+    version: int
+        The version identifier
 
     Returns:
     --------
     bytes: Serialized data
     """
-    return struct.pack("!BBHI", VERSION, TYPE, 0, LENGTH)
+    return struct.pack("!BBHI", version, TYPE, 0, LENGTH)
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> ResetQuery:
+def unserialize(buffer: bytes, validate: bool = True, *, version: int | None = None) -> ResetQuery:
     """
     Unserializes the PDU
 
@@ -43,6 +47,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> ResetQuery:
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -51,7 +57,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> ResetQuery:
     fields = struct.unpack("!BBHI", buffer)
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[3] != LENGTH:

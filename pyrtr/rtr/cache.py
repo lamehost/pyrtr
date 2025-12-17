@@ -16,6 +16,7 @@ from .pdu import (
 )
 from .pdu.errors import (
     CorruptDataError,
+    InternalError,
     NoDataAvailableError,
     UnsupportedPDUTypeError,
 )
@@ -39,7 +40,7 @@ class Cache(Speaker):
 
     Arguments:
     ----------
-    session: str
+    sessions: dict[int, int]
         The session ID
     rpki_client: RPKIClient instance
         RPKIClient instance
@@ -65,7 +66,7 @@ class Cache(Speaker):
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
-        session: int,
+        sessions: dict[int, int],
         rpki_client: RPKIClient,
         *,
         connect_callback: Callable[[Self], None] | Literal[False] = False,
@@ -81,7 +82,7 @@ class Cache(Speaker):
         self.retry = retry
 
         super().__init__(
-            session, connect_callback=connect_callback, disconnect_callback=disconnect_callback
+            sessions, connect_callback=connect_callback, disconnect_callback=disconnect_callback
         )
 
     def connection_made(self, transport: Transport) -> None:
@@ -104,12 +105,17 @@ class Cache(Speaker):
         data: bytes
             The Serial Query PDU binary data
         """
-        # Validates the PDU
-        pdu = serial_query.unserialize(data)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
 
-        if pdu["session"] != self.session:
+        # Validates the PDU
+        pdu = serial_query.unserialize(data, version=self.version)
+
+        # This is ambigous. parts of the RFC suggests to send Error Report PDU, others Cache Reset.
+        if pdu["session"] != self.sessions[self.version]:
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
+        # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
         if not self.rpki_client.serial:
             raise NoDataAvailableError("No data available yet")
 
@@ -142,16 +148,21 @@ class Cache(Speaker):
         data: bytes
             The Reset Query PDU binary data
         """
-        # Validates the PDU
-        reset_query.unserialize(data)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
 
+        # Validates the PDU
+        reset_query.unserialize(data, version=self.version)
+
+        # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
         if not self.rpki_client.serial:
             raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()
 
-        self.write_vrps(vrps=self.rpki_client.vrps)
-        self.write_router_keys(router_keys=self.rpki_client.router_keys)
+        self.write_vrps(vrps=self.rpki_client.vrps[self.version])
+        if self.version >= 1:
+            self.write_router_keys(router_keys=self.rpki_client.router_keys[self.version])
 
         self.write_end_of_data(
             refresh=self.refresh,

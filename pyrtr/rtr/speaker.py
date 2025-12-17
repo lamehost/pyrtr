@@ -63,7 +63,7 @@ class Speaker(asyncio.Protocol, ABC):
     remote: str
     version: int | None = None
     rpki_client: RPKIClient
-    session: int
+    sessions: dict[int, int]
     current_serial: int = 0
     transport: asyncio.BaseTransport
     connect_callback: Callable[[Self], None] | Literal[False] = False
@@ -71,12 +71,12 @@ class Speaker(asyncio.Protocol, ABC):
 
     def __init__(
         self,
-        session: int,
+        sessions: dict[int, int],
         *,
         connect_callback: Callable[[Self], None] | Literal[False] = False,
         disconnect_callback: Callable[[Self], None] | Literal[False] = False,
     ):
-        self.session = session
+        self.sessions = sessions
 
         self.connect_callback = connect_callback
         self.disconnect_callback = disconnect_callback
@@ -117,8 +117,13 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Serial Notify PDU to the wire
         """
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
         self.current_serial = self.rpki_client.serial
-        pdu = serial_notify.serialize(session=self.session, serial=self.rpki_client.serial)
+        pdu = serial_notify.serialize(
+            self.version, session=self.sessions[self.version], serial=self.rpki_client.serial
+        )
         self.write(pdu)
         logger.debug("Serial notify PDU sent to %s", self.remote)
 
@@ -126,7 +131,12 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Serial Query PDU to the wire
         """
-        pdu = serial_query.serialize(session=self.session, serial=self.rpki_client.serial)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
+        pdu = serial_query.serialize(
+            self.version, session=self.sessions[self.version], serial=self.rpki_client.serial
+        )
         self.write(pdu)
         logger.debug("Serial query PDU sent to %s", self.remote)
 
@@ -134,7 +144,12 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Reset Query PDU to the wire
         """
-        pdu = serial_query.serialize(session=self.session, serial=self.rpki_client.serial)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
+        pdu = serial_query.serialize(
+            self.version, session=self.sessions[self.version], serial=self.rpki_client.serial
+        )
         self.write(pdu)
         logger.debug("Reset query PDU sent to %s", self.remote)
 
@@ -142,7 +157,10 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Cache Response PDU to the wire
         """
-        pdu = cache_response.serialize(session=self.session)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
+        pdu = cache_response.serialize(version=self.version, session=self.sessions[self.version])
         self.write(pdu)
         logger.debug("Cache response PDU sent to %s", self.remote)
 
@@ -164,10 +182,6 @@ class Speaker(asyncio.Protocol, ABC):
 
         Arguments:
         ----------
-        session: int
-            The RTR session ID
-        serial: int
-            The current serial number of the RPKI cache
         refresh: int
             Refresh Interval in seconds. Default: 3600
         retry: int
@@ -175,9 +189,12 @@ class Speaker(asyncio.Protocol, ABC):
         expire: int
             Expire Interval in seconds: Expire: 7200
         """
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
 
         pdu = end_of_data.serialize(
-            session=self.session,
+            version=self.version,
+            session=self.sessions[self.version],
             serial=self.rpki_client.serial,
             refresh=refresh,
             retry=retry,
@@ -190,7 +207,10 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Cache Reset PDU to the wire
         """
-        pdu = cache_reset.serialize()
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
+        pdu = cache_reset.serialize(version=self.version)
         self.write(pdu)
         logger.debug("Cache reset PDU sent to %s", self.remote)
 
@@ -203,6 +223,9 @@ class Speaker(asyncio.Protocol, ABC):
         list[bytes]:
             List of serialized Router Keys
         """
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
         self.transport.writelines(router_keys)  # pyright: ignore
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
@@ -219,7 +242,10 @@ class Speaker(asyncio.Protocol, ABC):
         text: bytes
             Error diagnostic message. Default: bytes()
         """
-        _pdu = error_report.serialize(error=error, pdu=pdu, text=text)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
+        _pdu = error_report.serialize(version=self.version, error=error, pdu=pdu, text=text)
         self.write(_pdu)
         logger.debug("Error report PDU sent to %s", self.remote)
 
@@ -356,9 +382,9 @@ class Speaker(asyncio.Protocol, ABC):
             header = self.parse_header(data)
 
             # Version negotiation
-            if header['version'] != 1:
-                raise UnexpectedProtocolVersionError("This cache only supports version 1")
-        
+            if header["version"] not in self.sessions.keys():
+                raise UnexpectedProtocolVersionError(f"Unsupported version: {header['version']}")
+
             if self.version is None:
                 self.version = header["version"]
             elif self.version != header["version"]:

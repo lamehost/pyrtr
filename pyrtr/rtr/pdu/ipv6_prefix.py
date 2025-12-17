@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 6
 LENGTH = 32
 
@@ -27,12 +26,16 @@ class IPv6Prefix(TypedDict):
     asn: int
 
 
-def serialize(flags: int, prefix_length: int, max_length: int, prefix: bytes, asn: int) -> bytes:
+def serialize(
+    version: int, flags: int, prefix_length: int, max_length: int, prefix: bytes, asn: int
+) -> bytes:
     """
     Serializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     flags: int
         1 for announcement and 0 for withdrawal
     prefix_length:
@@ -51,7 +54,7 @@ def serialize(flags: int, prefix_length: int, max_length: int, prefix: bytes, as
 
     before_prefix = struct.pack(
         "!BBHIBBBB",
-        VERSION,
+        version,
         TYPE,
         0,
         LENGTH,
@@ -65,7 +68,9 @@ def serialize(flags: int, prefix_length: int, max_length: int, prefix: bytes, as
     return before_prefix + prefix + after_prefix
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> IPv6Prefix:  # NOSONAR
+def unserialize(
+    buffer: bytes, validate: bool = True, *, version: int | None = None
+) -> IPv6Prefix:  # NOSONAR
     """
     Unserializes the PDU
 
@@ -75,6 +80,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> IPv6Prefix:  # NOSONAR
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -83,7 +90,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> IPv6Prefix:  # NOSONAR
     fields = struct.unpack("!BBHIBBBBDI", buffer)
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[3] != LENGTH:

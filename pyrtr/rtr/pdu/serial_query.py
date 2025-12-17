@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 1
 LENGTH = 12
 
@@ -24,12 +23,14 @@ class SerialQuery(TypedDict):
     serial: int
 
 
-def serialize(session: int, serial: int) -> bytes:
+def serialize(version: int, session: int, serial: int) -> bytes:
     """
     Serializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     session: int
         The RTR session ID
     serial: int
@@ -39,10 +40,10 @@ def serialize(session: int, serial: int) -> bytes:
     --------
     bytes: Serialized data
     """
-    return struct.pack("!BBHII", VERSION, TYPE, session, LENGTH, serial)
+    return struct.pack("!BBHII", version, TYPE, session, LENGTH, serial)
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> SerialQuery:
+def unserialize(buffer: bytes, validate: bool = True, *, version: int | None = None) -> SerialQuery:
     """
     Unserializes the PDU
 
@@ -52,6 +53,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> SerialQuery:
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -60,7 +63,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> SerialQuery:
     fields = struct.unpack("!BBHII", buffer)
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[3] != LENGTH:

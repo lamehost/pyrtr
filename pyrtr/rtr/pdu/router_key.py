@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 9
 # The drawing in the RFC does not relfect the true size of the PDU
 LENGTH = 123
@@ -27,12 +26,14 @@ class RouterKey(TypedDict):
     spki: bytes
 
 
-def serialize(flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
+def serialize(version: int, flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
     """
     Serializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     flags: int
         1 for announcement and 0 for withdrawal
     ski: bytes
@@ -47,7 +48,7 @@ def serialize(flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
     """
     before_ski = struct.pack(
         "!BBBBI",
-        VERSION,
+        version,
         TYPE,
         flags,
         0,
@@ -58,7 +59,9 @@ def serialize(flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
     return before_ski + ski + after_ski + spki
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> RouterKey:  # NOSONAR
+def unserialize(
+    buffer: bytes, validate: bool = True, *, version: int | None = None
+) -> RouterKey:  # NOSONAR
     """
     Unserializes the PDU
 
@@ -68,6 +71,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> RouterKey:  # NOSONAR
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -77,7 +82,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> RouterKey:  # NOSONAR
     fields = fields + struct.unpack("!I", buffer[28:32])
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[2] not in [0, 1]:

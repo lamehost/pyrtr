@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 3
 LENGTH = 8
 
@@ -23,12 +22,14 @@ class CacheResponse(TypedDict):
     length: int
 
 
-def serialize(session: int) -> bytes:
+def serialize(version: int, session: int) -> bytes:
     """
     Serializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     session: int
         The RTR session ID
 
@@ -38,14 +39,16 @@ def serialize(session: int) -> bytes:
     """
     return struct.pack(
         "!BBHI",
-        VERSION,
+        version,
         TYPE,
         session,
         LENGTH,
     )
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> CacheResponse:
+def unserialize(
+    buffer: bytes, validate: bool = True, *, version: int | None = None
+) -> CacheResponse:
     """
     Unserializes the PDU
 
@@ -55,6 +58,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> CacheResponse:
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -63,7 +68,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> CacheResponse:
     fields = struct.unpack("!BBHI", buffer)
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[3] != LENGTH:

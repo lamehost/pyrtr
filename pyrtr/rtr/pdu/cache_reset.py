@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 8
 LENGTH = 8
 
@@ -22,9 +21,14 @@ class CacheReset(TypedDict):
     length: int
 
 
-def serialize() -> bytes:
+def serialize(version: int) -> bytes:
     """
     Serializes the PDU
+
+    Arguments:
+    ----------
+    version: int
+        The version identifier
 
     Returns:
     --------
@@ -32,14 +36,14 @@ def serialize() -> bytes:
     """
     return struct.pack(
         "!BBHI",
-        VERSION,
+        version,
         TYPE,
         0,
         LENGTH,
     )
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> CacheReset:
+def unserialize(buffer: bytes, validate: bool = True, *, version: int | None = None) -> CacheReset:
     """
     Unserializes the PDU
 
@@ -49,6 +53,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> CacheReset:
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -57,7 +63,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> CacheReset:
     fields = struct.unpack("!BBHI", buffer)
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[3] != LENGTH:

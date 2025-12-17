@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
 TYPE = 10
 
 
@@ -26,12 +25,14 @@ class ErrorReport(TypedDict):
     text: str | None
 
 
-def serialize(error: int, pdu: bytes, text: bytes = bytes()) -> bytes:
+def serialize(version: int, error: int, pdu: bytes, text: bytes = bytes()) -> bytes:
     """
     Serializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     error: int
         RTR error code
     pdu: bytes
@@ -49,7 +50,7 @@ def serialize(error: int, pdu: bytes, text: bytes = bytes()) -> bytes:
 
     before_pdu = struct.pack(
         "!BBHII",
-        VERSION,
+        version,
         TYPE,
         error,
         length,
@@ -64,7 +65,7 @@ def serialize(error: int, pdu: bytes, text: bytes = bytes()) -> bytes:
     return before_pdu + pdu + after_pdu + text
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> ErrorReport:
+def unserialize(buffer: bytes, validate: bool = True, *, version: int | None = None) -> ErrorReport:
     """
     Unserializes the PDU
 
@@ -74,6 +75,8 @@ def unserialize(buffer: bytes, validate: bool = True) -> ErrorReport:
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
+    version: int | None
+        Negotiated version number
 
     Returns:
     --------
@@ -82,7 +85,10 @@ def unserialize(buffer: bytes, validate: bool = True) -> ErrorReport:
     fields = struct.unpack("!BBHII", buffer[:12])
 
     if validate:
-        if fields[0] != VERSION:
+        if version is None:
+            raise ValueError("Specify a version to perform validation")
+
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[3] > 65535:

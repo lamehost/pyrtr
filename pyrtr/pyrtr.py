@@ -34,12 +34,16 @@ class Status(TypedDict):
 
     rpki_client: RPKIClientStatus
     clients: int
-    session: int
+    sessions: dict[str, int]
     pid: int
 
 
 async def https_server(
-    host: str, port: int, session: int, rpki_client: RPKIClient, cache_registry: dict[str, Cache]
+    host: str,
+    port: int,
+    sessions: dict[int, int],
+    rpki_client: RPKIClient,
+    cache_registry: dict[str, Cache],
 ) -> web.TCPSite:
     """
     Runs the HTTP server for the /status endpoint.
@@ -50,8 +54,8 @@ async def https_server(
         The host to bind to
     port: int
         The TCP port to bind to
-    session: str
-        The session ID
+    sessions: dict[int, int]
+        The session IDs
     rpki_client: RPKIClient instance
         RPKIClient instance
     cache_registry: Cache
@@ -71,7 +75,7 @@ async def https_server(
                 last_update=rpki_client.last_update,
             ),
             clients=len(cache_registry),
-            session=session,
+            sessions={"v0": sessions[0], "v1": sessions[1]},
             pid=os.getpid(),
         )
 
@@ -183,7 +187,7 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
 
 
 def create_cache_instance(  # pylint: disable=too-many-arguments
-    session: int,
+    sessions: dict[int, int],
     rpki_client: RPKIClient,
     cache_registry: dict[str, Cache],
     *,
@@ -196,7 +200,7 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
 
     Arguments:
     ----------
-    session: str
+    sessions: dict[int, int]
         The session ID
     rpki_client: RPKIClient instance
         RPKIClient instance
@@ -215,7 +219,7 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
     """
 
     cache = Cache(
-        session,
+        sessions,
         rpki_client,
         connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
         disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
@@ -230,7 +234,7 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
 async def rtr_server(  # pylint: disable=too-many-arguments
     host: str,
     port: int,
-    session: int,
+    sessions: dict[int, int],
     rpki_client: RPKIClient,
     cache_registry: dict[str, Cache],
     *,
@@ -247,8 +251,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         The host to bind to
     port: int
         The TCP port to bind to
-    session: str
-        The session ID
+    sessions: dict[int, int]
+        The session IDs
     rpki_client: RPKIClient instance
         RPKIClient instance
     cache_registry: Cache
@@ -265,7 +269,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
 
     server = await loop.create_server(
         lambda: create_cache_instance(
-            session,
+            sessions,
             rpki_client,
             cache_registry,
             refresh=refresh,
@@ -287,7 +291,12 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     )
 
     async with server:
-        logger.info("Listening on %s. Session: %i", listening_sockets, session)
+        logger.info(
+            "Listening on %s. V0 Session: %d. V1 Session: %d",
+            listening_sockets,
+            sessions[0],
+            sessions[1],
+        )
         # Start the server
         await server.serve_forever()
 
@@ -321,7 +330,9 @@ async def pyrtr(  # pylint: disable=too-many-arguments
     """
 
     rpki_client = RPKIClient()
-    session: int = random.randrange(0, 65535)
+    v0_session = random.randrange(0, 60000)
+    v1_session = v0_session + 100
+    sessions: dict[int, int] = {0: v0_session, 1: v1_session}
     cache_registry: dict[str, Cache] = {}
 
     await asyncio.gather(
@@ -329,12 +340,12 @@ async def pyrtr(  # pylint: disable=too-many-arguments
         rtr_server(
             host,
             port,
-            session,
+            sessions,
             rpki_client,
             cache_registry,
             refresh=refresh,
             expire=expire,
             retry=retry,
         ),
-        https_server(host, 8080, session, rpki_client, cache_registry),
+        https_server(host, 8080, sessions, rpki_client, cache_registry),
     )
