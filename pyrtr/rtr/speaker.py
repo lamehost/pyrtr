@@ -356,6 +356,9 @@ class Speaker(asyncio.Protocol, ABC):
             header = self.parse_header(data)
 
             # Version negotiation
+            if header['version'] != 1:
+                raise UnexpectedProtocolVersionError("This cache only supports version 1")
+        
             if self.version is None:
                 self.version = header["version"]
             elif self.version != header["version"]:
