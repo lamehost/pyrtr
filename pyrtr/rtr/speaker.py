@@ -6,6 +6,7 @@ import asyncio
 import logging
 import struct
 from abc import ABC, abstractmethod
+from enum import IntEnum
 from typing import Callable, Literal, Self, TypedDict
 
 from pyrtr.rpki_client import RPKIClient
@@ -32,6 +33,15 @@ from .pdu.errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class SupportedVersions(IntEnum):
+    """
+    Defines the supported RTR versions
+    """
+
+    VERSION_0 = 0
+    VERSION_1 = 1
 
 
 class RTRHeader(TypedDict):
@@ -62,8 +72,10 @@ class Speaker(asyncio.Protocol, ABC):
 
     remote: str
     version: int | None = None
+    rpki_clients: dict[int, RPKIClient] = {}
     rpki_client: RPKIClient
     sessions: dict[int, int]
+    session: int
     current_serial: int = 0
     transport: asyncio.BaseTransport
     connect_callback: Callable[[Self], None] | Literal[False] = False
@@ -120,9 +132,8 @@ class Speaker(asyncio.Protocol, ABC):
         if self.version is None:
             raise InternalError("Inconsistent version state.")
 
-        self.current_serial = self.rpki_client.serial
         pdu = serial_notify.serialize(
-            self.version, session=self.sessions[self.version], serial=self.rpki_client.serial
+            version=self.version, session=self.session, serial=self.rpki_client.serial
         )
         self.write(pdu)
         logger.debug("Serial notify PDU sent to %s", self.remote)
@@ -135,7 +146,7 @@ class Speaker(asyncio.Protocol, ABC):
             raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
-            self.version, session=self.sessions[self.version], serial=self.rpki_client.serial
+            version=self.version, session=self.session, serial=self.rpki_client.serial
         )
         self.write(pdu)
         logger.debug("Serial query PDU sent to %s", self.remote)
@@ -148,7 +159,7 @@ class Speaker(asyncio.Protocol, ABC):
             raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
-            self.version, session=self.sessions[self.version], serial=self.rpki_client.serial
+            version=self.version, session=self.session, serial=self.rpki_client.serial
         )
         self.write(pdu)
         logger.debug("Reset query PDU sent to %s", self.remote)
@@ -160,7 +171,10 @@ class Speaker(asyncio.Protocol, ABC):
         if self.version is None:
             raise InternalError("Inconsistent version state.")
 
-        pdu = cache_response.serialize(version=self.version, session=self.sessions[self.version])
+        pdu = cache_response.serialize(
+            version=self.version,
+            session=self.session,
+        )
         self.write(pdu)
         logger.debug("Cache response PDU sent to %s", self.remote)
 
@@ -194,7 +208,7 @@ class Speaker(asyncio.Protocol, ABC):
 
         pdu = end_of_data.serialize(
             version=self.version,
-            session=self.sessions[self.version],
+            session=self.session,
             serial=self.rpki_client.serial,
             refresh=refresh,
             retry=retry,
@@ -382,15 +396,22 @@ class Speaker(asyncio.Protocol, ABC):
             header = self.parse_header(data)
 
             # Version negotiation
-            if header["version"] not in self.sessions.keys():
-                raise UnexpectedProtocolVersionError(f"Unsupported version: {header['version']}")
-
             if self.version is None:
-                self.version = header["version"]
-            elif self.version != header["version"]:
-                raise UnexpectedProtocolVersionError(
-                    f"Negotatited version is {self.version}, received {header["version"]}"
-                )
+                try:
+                    self.version = SupportedVersions(header["version"]).value
+                    self.rpki_client = self.rpki_clients[self.version]
+                    self.session = self.sessions[self.version]
+                except ValueError as error:
+                    raise UnexpectedProtocolVersionError(
+                        f"Unsupported protocol version: {header['version']}"
+                    ) from error
+            else:
+                # Version changed
+                if self.version != header["version"]:
+                    raise UnexpectedProtocolVersionError(
+                        f"Negotatited protocol version is {self.version},"
+                        f" received version is {header['version']}"
+                    )
 
             # Handle the PDU
             self.handle_pdu(header, data)

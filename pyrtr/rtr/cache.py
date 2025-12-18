@@ -41,9 +41,9 @@ class Cache(Speaker):
     Arguments:
     ----------
     sessions: dict[int, int]
-        The session ID
+        The session IDs (one per version)
     rpki_client: RPKIClient instance
-        RPKIClient instance
+        RPKIClient instances (one per version)
     cache_registry: Cache
         The RTR Cache registry
     register_callback: Callable[[str, Self], None] | Literal[False]
@@ -60,14 +60,13 @@ class Cache(Speaker):
         Expire Interval in seconds: Expire: 7200
     """
 
-    rpki_client: RPKIClient
     register_callback: Callable[[str, Self], None] | Literal[False]
     unregister_callback: Callable[[str], None] | Literal[False]
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
         sessions: dict[int, int],
-        rpki_client: RPKIClient,
+        rpki_clients: dict[int, RPKIClient],
         *,
         connect_callback: Callable[[Self], None] | Literal[False] = False,
         disconnect_callback: Callable[[Self], None] | Literal[False] = False,
@@ -75,7 +74,7 @@ class Cache(Speaker):
         expire: int = 600,
         retry: int = 7200,
     ):
-        self.rpki_client = rpki_client
+        self.rpki_clients = rpki_clients
 
         self.refresh = refresh
         self.expire = expire
@@ -112,7 +111,7 @@ class Cache(Speaker):
         pdu = serial_query.unserialize(data, version=self.version)
 
         # This is ambigous. parts of the RFC suggests to send Error Report PDU, others Cache Reset.
-        if pdu["session"] != self.sessions[self.version]:
+        if pdu["session"] != self.session:
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
@@ -160,9 +159,9 @@ class Cache(Speaker):
 
         self.write_cache_response()
 
-        self.write_vrps(vrps=self.rpki_client.vrps[self.version])
+        self.write_vrps(vrps=self.rpki_client.vrps)
         if self.version >= 1:
-            self.write_router_keys(router_keys=self.rpki_client.router_keys[self.version])
+            self.write_router_keys(router_keys=self.rpki_client.router_keys)
 
         self.write_end_of_data(
             refresh=self.refresh,
