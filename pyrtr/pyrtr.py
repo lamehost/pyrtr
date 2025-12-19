@@ -104,7 +104,7 @@ async def http_server(
     await runner.setup()
     site = web.TCPSite(runner, host, port)
 
-    logger.info("Health endpoint available at http://%s:%d/healthz", host, port)
+    logger.info("Web server available at http://%s:%d/", host, port)
     await site.start()
 
     while True:
