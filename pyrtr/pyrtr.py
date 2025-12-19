@@ -33,7 +33,7 @@ class Status(TypedDict):
     """
 
     rpki_client: dict[str, RPKIClientStatus]
-    clients: int
+    clients: list[str]
     sessions: dict[str, int]
     pid: int
 
@@ -82,7 +82,7 @@ async def https_server(
                     last_update=rpki_clients[1].last_update,
                 ),
             },
-            clients=len(cache_registry),
+            clients=list(cache_registry.keys()),
             sessions={"v0": sessions[0], "v1": sessions[1]},
             pid=os.getpid(),
         )
@@ -91,7 +91,7 @@ async def https_server(
 
     webapp = web.Application()
     webapp.router.add_get(
-        "/status",
+        "/healthz",
         handle_get_status,
         allow_head=True,
     )
@@ -100,7 +100,7 @@ async def https_server(
     await runner.setup()
     site = web.TCPSite(runner, host, port)
 
-    logger.info("Status endpoint available at http://%s:%d/status", host, port)
+    logger.info("Status endpoint available at http://%s:%d/healthz", host, port)
     await site.start()
 
     while True:
