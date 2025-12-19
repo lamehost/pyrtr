@@ -105,7 +105,7 @@ class Cache(Speaker):
             The Serial Query PDU binary data
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         # Validates the PDU
         pdu = serial_query.unserialize(self.version, data)
@@ -148,7 +148,7 @@ class Cache(Speaker):
             The Reset Query PDU binary data
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         # Validates the PDU
         reset_query.unserialize(self.version, data)

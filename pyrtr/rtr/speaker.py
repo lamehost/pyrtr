@@ -130,7 +130,7 @@ class Speaker(asyncio.Protocol, ABC):
         Writes a Serial Notify PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = serial_notify.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -143,7 +143,7 @@ class Speaker(asyncio.Protocol, ABC):
         Writes a Serial Query PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = serial_query.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -156,7 +156,7 @@ class Speaker(asyncio.Protocol, ABC):
         Writes a Reset Query PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = serial_query.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -169,7 +169,7 @@ class Speaker(asyncio.Protocol, ABC):
         Writes a Cache Response PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = cache_response.serialize(
             version=self.version,
@@ -204,7 +204,7 @@ class Speaker(asyncio.Protocol, ABC):
             Expire Interval in seconds: Expire: 7200
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = end_of_data.serialize(
             version=self.version,
@@ -222,7 +222,7 @@ class Speaker(asyncio.Protocol, ABC):
         Writes a Cache Reset PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = cache_reset.serialize(version=self.version)
         self.write(pdu)
@@ -238,7 +238,7 @@ class Speaker(asyncio.Protocol, ABC):
             List of serialized Router Keys
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         self.transport.writelines(router_keys)  # pyright: ignore
         logger.debug("Router keys PDUs sent to %s", self.remote)
@@ -257,7 +257,7 @@ class Speaker(asyncio.Protocol, ABC):
             Error diagnostic message. Default: bytes()
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         _pdu = error_report.serialize(version=self.version, error=error, pdu=pdu, text=text)
         self.write(_pdu)
@@ -287,7 +287,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         # https://datatracker.ietf.org/doc/html/rfc8210#section-12
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = error_report.unserialize(self.version, data)
 
