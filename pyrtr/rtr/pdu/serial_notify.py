@@ -43,20 +43,18 @@ def serialize(version: int, session: int, serial: int) -> bytes:
     return struct.pack("!BBHII", version, TYPE, session, LENGTH, serial)
 
 
-def unserialize(
-    buffer: bytes, validate: bool = True, *, version: int | None = None
-) -> SerialNotify:
+def unserialize(version: int, buffer: bytes, validate: bool = True) -> SerialNotify:
     """
     Unserializes the PDU
 
     Arguments:
     ----------
+    Version: int
+        Version number
     buffer: bytes
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
-    version: int | None
-        Negotiated version number
 
     Returns:
     --------
@@ -65,9 +63,6 @@ def unserialize(
     fields = struct.unpack("!BBHII", buffer)
 
     if validate:
-        if version is None:
-            raise ValueError("Specify a version to perform validation")
-
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 

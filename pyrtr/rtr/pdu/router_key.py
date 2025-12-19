@@ -59,20 +59,18 @@ def serialize(version: int, flags: int, ski: bytes, asn: int, spki: bytes) -> by
     return before_ski + ski + after_ski + spki
 
 
-def unserialize(
-    buffer: bytes, validate: bool = True, *, version: int | None = None
-) -> RouterKey:  # NOSONAR
+def unserialize(version: int, buffer: bytes, validate: bool = True) -> RouterKey:
     """
     Unserializes the PDU
 
     Arguments:
     ----------
+    version: int
+        Version number
     buffer: bytes
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
-    version: int | None
-        Negotiated version number
 
     Returns:
     --------
@@ -82,9 +80,6 @@ def unserialize(
     fields = fields + struct.unpack("!I", buffer[28:32])
 
     if validate:
-        if version is None:
-            raise ValueError("Specify a version to perform validation")
-
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 

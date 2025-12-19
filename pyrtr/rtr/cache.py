@@ -108,14 +108,14 @@ class Cache(Speaker):
             raise InternalError("Inconsistent version state.")
 
         # Validates the PDU
-        pdu = serial_query.unserialize(data, version=self.version)
+        pdu = serial_query.unserialize(self.version, data)
 
         # This is ambigous. parts of the RFC suggests to send Error Report PDU, others Cache Reset.
         if pdu["session"] != self.session:
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
-        if not self.rpki_client.serial:
+        if not self.current_serial:
             raise NoDataAvailableError("No data available yet")
 
         serial = int(pdu["serial"])
@@ -151,10 +151,10 @@ class Cache(Speaker):
             raise InternalError("Inconsistent version state.")
 
         # Validates the PDU
-        reset_query.unserialize(data, version=self.version)
+        reset_query.unserialize(self.version, data)
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
-        if not self.rpki_client.serial:
+        if not self.current_serial:
             raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()

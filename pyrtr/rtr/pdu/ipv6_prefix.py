@@ -26,7 +26,7 @@ class IPv6Prefix(TypedDict):
     asn: int
 
 
-def serialize(
+def serialize(  # pylint:disable=too-many-arguments, too-many-positional-arguments
     version: int, flags: int, prefix_length: int, max_length: int, prefix: bytes, asn: int
 ) -> bytes:
     """
@@ -68,20 +68,18 @@ def serialize(
     return before_prefix + prefix + after_prefix
 
 
-def unserialize(
-    buffer: bytes, validate: bool = True, *, version: int | None = None
-) -> IPv6Prefix:  # NOSONAR
+def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefix:
     """
     Unserializes the PDU
 
     Arguments:
     ----------
+    version: int
+        Version number
     buffer: bytes
         Binary PDU data
     validate: bool
         If True, then validates the values. Default: True
-    version: int | None
-        Negotiated version number
 
     Returns:
     --------
@@ -90,9 +88,6 @@ def unserialize(
     fields = struct.unpack("!BBHIBBBBDI", buffer)
 
     if validate:
-        if version is None:
-            raise ValueError("Specify a version to perform validation")
-
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 

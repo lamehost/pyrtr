@@ -133,7 +133,7 @@ class Speaker(asyncio.Protocol, ABC):
             raise InternalError("Inconsistent version state.")
 
         pdu = serial_notify.serialize(
-            version=self.version, session=self.session, serial=self.rpki_client.serial
+            version=self.version, session=self.session, serial=self.current_serial
         )
         self.write(pdu)
         logger.debug("Serial notify PDU sent to %s", self.remote)
@@ -146,7 +146,7 @@ class Speaker(asyncio.Protocol, ABC):
             raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
-            version=self.version, session=self.session, serial=self.rpki_client.serial
+            version=self.version, session=self.session, serial=self.current_serial
         )
         self.write(pdu)
         logger.debug("Serial query PDU sent to %s", self.remote)
@@ -159,7 +159,7 @@ class Speaker(asyncio.Protocol, ABC):
             raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
-            version=self.version, session=self.session, serial=self.rpki_client.serial
+            version=self.version, session=self.session, serial=self.current_serial
         )
         self.write(pdu)
         logger.debug("Reset query PDU sent to %s", self.remote)
@@ -209,7 +209,7 @@ class Speaker(asyncio.Protocol, ABC):
         pdu = end_of_data.serialize(
             version=self.version,
             session=self.session,
-            serial=self.rpki_client.serial,
+            serial=self.current_serial,
             refresh=refresh,
             retry=retry,
             expire=expire,
@@ -286,7 +286,10 @@ class Speaker(asyncio.Protocol, ABC):
             The Error Report PDU binary data
         """
         # https://datatracker.ietf.org/doc/html/rfc8210#section-12
-        pdu = error_report.unserialize(data)
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
+        pdu = error_report.unserialize(self.version, data)
 
         message = pdu["text"] or ""
 
@@ -399,7 +402,10 @@ class Speaker(asyncio.Protocol, ABC):
             if self.version is None:
                 try:
                     self.version = SupportedVersions(header["version"]).value
+
+                    # Most of the Class values are set here after version negotiation
                     self.rpki_client = self.rpki_clients[self.version]
+                    self.current_serial = self.rpki_client.serial
                     self.session = self.sessions[self.version]
                 except ValueError as error:
                     raise UnexpectedProtocolVersionError(
