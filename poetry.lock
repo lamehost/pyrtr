@@ -875,6 +875,26 @@ test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=8.4.2)", "pytest-
 type = ["mypy (>=1.18.2)"]
 
 [[package]]
+name = "prometheus-client"
+version = "0.23.1"
+description = "Python client for the Prometheus monitoring system."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = []
+develop = false
+
+[package.extras]
+aiohttp = ["aiohttp"]
+twisted = ["twisted"]
+
+[package.source]
+type = "git"
+url = "https://github.com/prometheus/client_python.git"
+reference = "HEAD"
+resolved_reference = "7b9959209492c06968785c66bc6ea2316d156f91"
+
+[[package]]
 name = "propcache"
 version = "0.4.1"
 description = "Accelerated property cache"
@@ -1577,4 +1597,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13"
-content-hash = "f9ad0c03efc8832df001ad1d0d58cdea081cffcea7a9fcbd31c516d4015d0f28"
+content-hash = "62f49657e4fdb446e95bbb2c33435fdf20e4204403a1664cfa2961bf965af9c2"

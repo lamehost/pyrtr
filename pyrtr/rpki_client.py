@@ -12,6 +12,7 @@ from typing import Tuple, TypedDict
 import aiofiles
 import orjson
 
+from pyrtr import prometheus
 from pyrtr.rtr.pdu import ipv4_prefix, ipv6_prefix, router_key
 
 logger = logging.getLogger(__name__)
@@ -409,6 +410,34 @@ class RPKIClient:
             timestamp=datetime.now(timezone.utc).timestamp(),
             diffs={"vrps": [], "router_keys": []},
         )
+        self.update_prometheus()
+
         logger.info("Serial for version %d changed to: %d", self.version, self.serial)
 
         return True
+
+    def update_prometheus(self, increment_serial: bool = True) -> None:
+        """
+        Updates the RPKI prometheus endpoints
+
+        Arguments:
+        ----------
+        increment_serial: bool
+            Whether to increment the metric for the serial counter of not. Defatul: True
+        """
+        match self.version:
+            case 0:
+                if increment_serial:
+                    prometheus.rpki_v0_serial.inc()
+                prometheus.rpki_v0_bgpsec_keys.set(len(self.vrps))
+                prometheus.rpki_v0_vrps.set(len(self.router_keys))
+
+            case 1:
+                if increment_serial:
+                    prometheus.rpki_v1_serial.inc()
+                prometheus.rpki_v1_bgpsec_keys.set(len(self.vrps))
+                prometheus.rpki_v1_vrps.set(len(self.router_keys))
+            case _:
+                logger.warning(
+                    "Not exporting the RPKI serial counter for version: %d", self.version
+                )

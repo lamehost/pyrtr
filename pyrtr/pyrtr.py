@@ -9,21 +9,20 @@ import random
 from typing import TypedDict
 
 from aiohttp import web
+from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp_handler
 
+from pyrtr import prometheus
 from pyrtr.rpki_client import RPKIClient
 from pyrtr.rtr.cache import Cache
 
 logger = logging.getLogger(__name__)
 
 
-class RPKIClientStatus(TypedDict):
+class RPKIClientStats(TypedDict):
     """
     Defines the set of metadata describing the status of the RPKIClient JSON file
     """
 
-    serial: int
-    vrps: int
-    router_keys: int
     last_update: str | None
 
 
@@ -32,13 +31,12 @@ class Status(TypedDict):
     Defines the set of metadata describing the application status
     """
 
-    rpki_client: dict[str, RPKIClientStatus]
-    clients: list[str]
+    rpki_client: dict[str, RPKIClientStats]
     sessions: dict[str, int]
     pid: int
 
 
-async def https_server(
+async def http_server(
     host: str,
     port: int,
     sessions: dict[int, int],
@@ -46,7 +44,10 @@ async def https_server(
     cache_registry: dict[str, Cache],
 ) -> web.TCPSite:
     """
-    Runs the HTTP server for the /status endpoint.
+    Runs the HTTP server providing three endpoints:
+     - /clients: List of connected clients
+     - /healthz: Application status
+     - /metrics: Prometheus metrics
 
     Arguments:
     ----------
@@ -58,32 +59,25 @@ async def https_server(
         The session IDs
     rpki_client: RPKIClient instance
         RPKIClient instance
-    cache_registry: Cache
-        The RTR Cache registry
+    cache_registry: dict[str, Cache]
+        The Cache registry
 
     Returns:
     --------
     web.TCPSite: The TCP server coroutine
     """
 
-    async def handle_get_status(_: web.Request) -> web.Response:  # NOSONAR
+    async def get_clients(_: web.Request) -> web.Response:  # NOSONAR
+        clients = {"clients": list(cache_registry.keys())}
+        return web.json_response(clients, dumps=lambda data: json.dumps(data, indent=2))
+
+    async def get_health(_: web.Request) -> web.Response:  # NOSONAR
         status = Status(
             rpki_client={
-                "v0": RPKIClientStatus(
-                    serial=rpki_clients[0].serial,
-                    vrps=len(rpki_clients[0].vrps),
-                    router_keys=len(rpki_clients[0].router_keys),
-                    last_update=rpki_clients[0].last_update,
-                ),
-                "v1": RPKIClientStatus(
-                    serial=rpki_clients[1].serial,
-                    vrps=len(rpki_clients[1].vrps),
-                    router_keys=len(rpki_clients[1].router_keys),
-                    last_update=rpki_clients[1].last_update,
-                ),
+                "V0": RPKIClientStats(last_update=rpki_clients[0].last_update),
+                "V1": RPKIClientStats(last_update=rpki_clients[1].last_update),
             },
-            clients=list(cache_registry.keys()),
-            sessions={"v0": sessions[0], "v1": sessions[1]},
+            sessions={"V0": sessions[0], "V1": sessions[1]},
             pid=os.getpid(),
         )
 
@@ -91,8 +85,18 @@ async def https_server(
 
     webapp = web.Application()
     webapp.router.add_get(
+        "/clients",
+        get_clients,
+        allow_head=True,
+    )
+    webapp.router.add_get(
         "/healthz",
-        handle_get_status,
+        get_health,
+        allow_head=True,
+    )
+    webapp.router.add_get(
+        "/metrics",
+        prometheus_aiohttp_handler(),
         allow_head=True,
     )
 
@@ -100,7 +104,7 @@ async def https_server(
     await runner.setup()
     site = web.TCPSite(runner, host, port)
 
-    logger.info("Status endpoint available at http://%s:%d/healthz", host, port)
+    logger.info("Health endpoint available at http://%s:%d/healthz", host, port)
     await site.start()
 
     while True:
@@ -178,6 +182,7 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
         Cache registry
     """
     cache_registry[cache.remote] = cache
+    prometheus.clients.inc()
     logger.info("Registered cache: %s", cache.remote)
 
 
@@ -194,6 +199,7 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     """
     try:
         del cache_registry[cache.remote]
+        prometheus.clients.dec()
         logger.info("Unregisterd cache: %s", cache.remote)
     except KeyError:
         logger.error("Attempted to unregister a non existing cache client: %s", cache.remote)
@@ -358,5 +364,5 @@ async def pyrtr(  # pylint: disable=too-many-arguments
             expire=expire,
             retry=retry,
         ),
-        https_server(host, 8080, sessions, rpki_clients, cache_registry),
+        http_server(host, 8080, sessions, rpki_clients, cache_registry),
     )
