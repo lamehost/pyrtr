@@ -374,32 +374,38 @@ class RPKIClient:
             pass
 
         for serial, old_json in self.json.items():
-            # Re-generate diffs
-            vrps: list[bytes] = list(
-                self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
-            )
-            if self.version >= 1:
-                router_keys: list[bytes] = list(
-                    self.calculate_bgpsec_key_diffs(
-                        old_json["content"]["bgpsec_keys"], new_json["bgpsec_keys"]
+            match self.version:
+                case 0:
+                    # Re-generate diffs
+                    vrps: list[bytes] = list(
+                        self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
                     )
-                )
-            else:
-                router_keys = []
-
-            # Add a new list of changes
-            self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=router_keys)
-
-        # Update the list of VRPs
-        self.vrps = list(self.serialize_unique_vrps(roas=new_json["roas"]))
-
-        if self.version >= 1:
-            # Update the list of Router Keys
-            self.router_keys = list(
-                self.serialize_unique_bgpsec_key(bgpsec_keys=new_json["bgpsec_keys"])
-            )
-        else:
-            self.router_keys = []
+                    # Add a new list of changes
+                    self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=[])
+                    # Update the list of VRPs
+                    self.vrps = list(self.serialize_unique_vrps(roas=new_json["roas"]))
+                    # Update the list of Router Keys
+                    self.router_keys = []
+                case 1:
+                    # Re-generate diffs
+                    vrps: list[bytes] = list(
+                        self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
+                    )
+                    router_keys: list[bytes] = list(
+                        self.calculate_bgpsec_key_diffs(
+                            old_json["content"]["bgpsec_keys"], new_json["bgpsec_keys"]
+                        )
+                    )
+                    # Add a new list of changes
+                    self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=router_keys)
+                    # Update the list of VRPs
+                    self.vrps = list(self.serialize_unique_vrps(roas=new_json["roas"]))
+                    # Update the list of Router Keys
+                    self.router_keys = list(
+                        self.serialize_unique_bgpsec_key(bgpsec_keys=new_json["bgpsec_keys"])
+                    )
+                case _:
+                    continue
 
         # Save new JSON
         self.serial = self.serial + 1
