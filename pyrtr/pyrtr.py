@@ -112,7 +112,7 @@ async def http_server(
 
 
 async def json_reloader(
-    path: str | os.PathLike[str],
+    json_file: str | os.PathLike[str],
     rpki_clients: dict[int, RPKIClient],
     cache_registry: dict[str, Cache],
     expire: int = 7200,
@@ -123,7 +123,7 @@ async def json_reloader(
 
     Arguments:
     ----------
-    path: str | os.PathLike[str]
+    json_file: str | os.PathLike[str]
         The path pointing to the JSON file
     rpki_client: RPKIClient
         RPKIClient instances (one per version)
@@ -141,7 +141,7 @@ async def json_reloader(
 
             try:
                 # Load new entries
-                await rpki_client.load(path)
+                await rpki_client.load(json_file)
             except Exception as error:  # pylint: disable=broad-exception-caught
                 logger.error("Unable to load the RPKI client JSON file: %s", error)
                 await asyncio.sleep(sleep)
@@ -323,7 +323,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
 async def pyrtr(  # pylint: disable=too-many-arguments
     host: str,
     port: int,
-    path: str | os.PathLike[str],
+    json_file: str | os.PathLike[str],
     *,
     refresh: int = 3600,
     expire: int = 600,
@@ -338,7 +338,7 @@ async def pyrtr(  # pylint: disable=too-many-arguments
         The host to bind to
     port: int
         The TCP port to bind to
-    path: str | os.PathLike[str]
+    json_file: str | os.PathLike[str]
         The path pointing to the JSON file
     refresh: int
         Refresh Interval in seconds. Default: 3600
@@ -353,7 +353,7 @@ async def pyrtr(  # pylint: disable=too-many-arguments
     cache_registry: dict[str, Cache] = {}
 
     await asyncio.gather(
-        json_reloader(path, rpki_clients, cache_registry, expire, int(refresh / 2)),
+        json_reloader(json_file, rpki_clients, cache_registry, expire, int(refresh / 2)),
         rtr_server(
             host,
             port,

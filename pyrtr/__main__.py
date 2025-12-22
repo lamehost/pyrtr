@@ -35,7 +35,7 @@ def main():
             pyrtr(
                 str(settings.HOST),
                 settings.PORT,
-                settings.PATH,
+                settings.JSONFILE,
                 refresh=settings.REFRESH,
                 retry=settings.RETRY,
                 expire=settings.EXPIRE,
