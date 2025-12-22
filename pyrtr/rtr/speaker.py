@@ -60,7 +60,7 @@ class FatalRTRError(Exception):
     """
 
 
-class Speaker(asyncio.Protocol, ABC):
+class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attributes
     """
     Abstract Base Class that defines the RTR spekaer
 
