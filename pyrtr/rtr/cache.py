@@ -5,6 +5,7 @@ Defines the RTR protocol sequence for the RTR Cache
 import logging
 from asyncio import Transport
 from typing import Callable, Literal, Self, TypedDict
+from typing_extensions import override
 
 from pyrtr.rpki_client import RPKIClient
 from pyrtr.rtr.speaker import Speaker
@@ -63,6 +64,7 @@ class Cache(Speaker):
     register_callback: Callable[[str, Self], None] | Literal[False]
     unregister_callback: Callable[[str], None] | Literal[False]
 
+    @override
     def __init__(  # pylint: disable=too-many-arguments
         self,
         sessions: dict[int, int],
@@ -84,11 +86,13 @@ class Cache(Speaker):
             sessions, connect_callback=connect_callback, disconnect_callback=disconnect_callback
         )
 
+    @override
     def connection_made(self, transport: Transport) -> None:
         super().connection_made(transport)
 
         logger.info("New client connected: %s", self.remote)
 
+    @override
     def connection_lost(self, exc: Exception | None) -> None:
         super().connection_lost(exc)
 
