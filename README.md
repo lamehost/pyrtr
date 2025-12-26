@@ -1,5 +1,7 @@
-# PyRTR
+# pyRTR
 [Resource Public Key Infrastructure (RPKI) to Router Protocol Version 1](https://datatracker.ietf.org/doc/html/rfc6810) cache written in Python.
+
+![pyRTR logo](pyRTR.png "pyRTR logo")
 
 ## Features
  - RPKI-client backend
@@ -11,13 +13,13 @@
  - JunOS
 
 ## Configuration
-PyRTR has no configuration file and takes no CLI argument. Parameters can be set through the following ENV variables:
+pyRTR has no configuration file and takes no CLI argument. Parameters can be set through the following ENV variables:
 
 | Variable | Description | Default |
 | -------- | ------------| ----- |
 | PYRTR_LOGLEVEL |  Sets the log level | INFO |
 | PYRTR_HOST |  Host to bind the RTR and HTTP servers to | localhost |
-| PYRTR_PORT |  Port to bind the RTR server to (HTTP port is **always** 8080) | 8323 |
+| PYRTR_PORT |  Port to bind the RTR server to (HTTP port is <ins>always</ins> 8080) | 8323 |
 | PYRTR_JSONFILE |  Path to the RPKI-client JSON file | json |
 | PYRTR_REFRESH |  RTR Refresh Interval in seconds * | 3600 |
 | PYRTR_RETRY |  RTR Retry Interval in seconds * | 600 |
