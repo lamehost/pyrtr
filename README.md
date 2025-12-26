@@ -24,3 +24,9 @@ PyRTR has no configuration file and takes no CLI argument. Parameters can be set
 | PYRTR_EXPIRE |  RTR Expire Interval in seconds * | 7200 |
 
 \* See https://datatracker.ietf.org/doc/html/rfc8210#section-6
+
+## HTTP endpoints
+The following HTTP endpoints are available at HTTP port 8080:
+ - **/clients**: List of connected clients
+ - **/healthz**: Application status
+ - **/metrics**: Prometheus metrics
