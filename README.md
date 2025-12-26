@@ -1,22 +1,26 @@
 # PyRTR
+[Resource Public Key Infrastructure (RPKI) to Router Protocol Version 1](https://datatracker.ietf.org/doc/html/rfc6810) cache written in Python.
 
-[Resource Public Key Infrastructure (RPKI) to Router Protocol Version 1 Cache written in Python](https://datatracker.ietf.org/doc/html/rfc6810)
+## Features
+ - RPKI-client backend
+ - HTTP health and connected clients endpoints
+ - Prometheus metrics
 
 ## Tested with
  - FRR
  - JunOS
 
 ## Configuration
-PyRTR is configured through the following ENV variables:
-```
-    PYRTR_LOGLEVEL: Sets the log level. Default: INFO
+PyRTR has no configuration file and takes no CLI argument. Parameters can be set through the following ENV variables:
 
-    PYRTR_HOST: Host to bind the RTR and HTTP servers to. Default: localhost
-    PYRTR_PORT: Port to bind the RTR server to (HTTP port is _always_ 8080). Default: 8323
-    PYRTR_JSONFILE: Path to the RPKI-client JSON file. Default: `json`
+| Variable | Description | Default |
+| -------- | ------------| ----- |
+| PYRTR_LOGLEVEL |  Sets the log level | INFO |
+| PYRTR_HOST |  Host to bind the RTR and HTTP servers to | localhost |
+| PYRTR_PORT |  Port to bind the RTR server to (HTTP port is **always** 8080) | 8323 |
+| PYRTR_JSONFILE |  Path to the RPKI-client JSON file | json |
+| PYRTR_REFRESH |  RTR Refresh Interval in seconds * | 3600 |
+| PYRTR_RETRY |  RTR Retry Interval in seconds * | 600 |
+| PYRTR_EXPIRE |  RTR Expire Interval in seconds * | 7200 |
 
-    # https://datatracker.ietf.org/doc/html/rfc8210#section-6
-    PYRTR_REFRESH: RTR Refresh Interval. Default: 3600s
-    PYRTR_RETRY: RTR Retry Interval. Default: 600s
-    PYRTR_EXPIRE: RTR Expire Interval. Default: 7200s
-```
+\* See https://datatracker.ietf.org/doc/html/rfc8210#section-6
