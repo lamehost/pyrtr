@@ -5,6 +5,7 @@ Defines the RTR protocol sequence for the RTR Cache
 import logging
 from asyncio import Transport
 from typing import Callable, Literal, Self, TypedDict
+
 from typing_extensions import override
 
 from pyrtr.rpki_client import RPKIClient

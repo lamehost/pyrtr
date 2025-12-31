@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     HOST: IPv4Address | IPv6Address = IPv4Address("127.0.0.1")
     PORT: Annotated[int, Field(gt=0, lt=65536)] = 8323  # pyright: ignore[reportCallIssue]
     JSONFILE: str | os.PathLike[str] = "json"
+    RELOAD: Annotated[int, Field(gt=0, ls=3600)] = 900  # pyright: ignore[reportCallIssue]
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6
     REFRESH: Annotated[int, Field(gt=0, ls=86401)] = 3600  # pyright: ignore[reportCallIssue]

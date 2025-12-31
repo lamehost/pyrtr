@@ -112,37 +112,32 @@ async def http_server(
 
 
 async def json_reloader(
-    json_file: str | os.PathLike[str],
     rpki_clients: dict[int, RPKIClient],
     cache_registry: dict[str, Cache],
-    expire: int = 7200,
-    sleep: int = 1800,
+    sleep: int = 900,
 ) -> None:
     """
     Reloads the content of the RPKI JSON output. Holds `sleeps` seconds between every attempt
 
     Arguments:
     ----------
-    json_file: str | os.PathLike[str]
-        The path pointing to the JSON file
     rpki_client: RPKIClient
         RPKIClient instances (one per version)
     cache_registry: dict[str, Cache]
         The Cache registry
-    expire: int
-        Expire Interval in seconds: Expire: 7200
     sleep: int
-        Sleep interval in seconds. Default: 1800
+        Sleep interval in seconds. Default: 900
     """
     while True:
         # Remove stale entries
         for rpki_client in rpki_clients.values():
-            rpki_client.purge(expire)
+            rpki_client.purge()
 
             try:
                 # Load new entries
-                await rpki_client.load(json_file)
+                await rpki_client.reload()
             except Exception as error:  # pylint: disable=broad-exception-caught
+                raise error
                 logger.error("Unable to load the RPKI client JSON file: %s", error)
                 await asyncio.sleep(sleep)
                 continue
@@ -324,6 +319,7 @@ async def pyrtr(  # pylint: disable=too-many-arguments
     host: str,
     port: int,
     json_file: str | os.PathLike[str],
+    reload: int,
     *,
     refresh: int = 3600,
     expire: int = 600,
@@ -340,6 +336,8 @@ async def pyrtr(  # pylint: disable=too-many-arguments
         The TCP port to bind to
     json_file: str | os.PathLike[str]
         The path pointing to the JSON file
+    reload: int
+        The Interval after which RPKIClient is reloaded
     refresh: int
         Refresh Interval in seconds. Default: 3600
     retry: int
@@ -348,12 +346,15 @@ async def pyrtr(  # pylint: disable=too-many-arguments
         Expire Interval in seconds: Expire: 7200
     """
 
-    rpki_clients: dict[int, RPKIClient] = {0: RPKIClient(version=0), 1: RPKIClient(version=1)}
+    rpki_clients: dict[int, RPKIClient] = {
+        0: RPKIClient(version=0, json_file=json_file, expire=expire),
+        1: RPKIClient(version=1, json_file=json_file, expire=expire),
+    }
     sessions: dict[int, int] = {0: random.randrange(0, 65535), 1: random.randrange(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
     await asyncio.gather(
-        json_reloader(json_file, rpki_clients, cache_registry, expire, int(refresh / 2)),
+        json_reloader(rpki_clients, cache_registry, reload),
         rtr_server(
             host,
             port,

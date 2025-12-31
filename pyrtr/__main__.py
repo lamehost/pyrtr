@@ -36,6 +36,7 @@ def main():
                 str(settings.HOST),
                 settings.PORT,
                 settings.JSONFILE,
+                settings.RELOAD,
                 refresh=settings.REFRESH,
                 retry=settings.RETRY,
                 expire=settings.EXPIRE,

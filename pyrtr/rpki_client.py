@@ -1,13 +1,12 @@
 """Interface towards the rpki-client JSON file"""
 
 import base64
-import hashlib
 import logging
 import os
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from ipaddress import ip_network
-from typing import Tuple, TypedDict
+from typing import TypedDict
 
 import aiofiles
 import orjson
@@ -100,10 +99,10 @@ class JSONContent(TypedDict):
     """Defines the fields in the JSON file"""
 
     metadata: JSONMetadata
-    roas: list[ROA]
-    bgpsec_keys: list[BGPSecKey]
+    roas: dict[str, ROA]
+    bgpsec_keys: dict[str, BGPSecKey]
     nonfunc_cas: list[NonFuncCA]
-    aspas: list[ASPA]
+    aspas: dict[str, ASPA]
 
 
 class JSONDiffs(TypedDict):
@@ -134,17 +133,21 @@ class RPKIClient:
 
     # Serial equals 0 means no data is available
     serial: int = 0
+    json_file: str | os.PathLike[str]
+    expire: int
     json: dict[int, JSON] = {}
     vrps: list[bytes] = []
     router_keys: list[bytes] = []
     last_update: str | None = None
     versions: int
 
-    def __init__(self, version: int):
+    def __init__(self, version: int, json_file: str | os.PathLike[str], expire: int = 7200):
         self.version = version
+        self.json_file = json_file
+        self.expire = expire
 
     def calculate_roa_diffs(
-        self, old_json_roas: list[ROA], new_json_roas: list[ROA]
+        self, old_roas: dict[str, ROA], new_roas: dict[str, ROA]
     ) -> Generator[bytes]:
         """
         Calculates the differences in the ROAs between the old and the new JSON file and yields
@@ -152,41 +155,32 @@ class RPKIClient:
 
         Arguments:
         ----------
-        old_json_roas: list[ROA]
+        old_roas: list[ROA]
             ROAs in the old JSON file
-        new_json_roas: list[ROA]
+        new_roas: list[ROA]
             ROAs in the new JSON file
 
         Returns:
         --------
         Generator[bytes]: Yields serialized prefix PDUs
         """
+        old_roas_keys: set[str] = set(old_roas.keys())
+        new_roas_keys: set[str] = set(new_roas.keys())
+
         # Generate hashabale data structures
-        old_roas: dict[Tuple[int, str, int], ROA] = {
-            key: roa
-            for roa in old_json_roas
-            if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
-        }
-
-        new_roas: dict[Tuple[int, str, int], ROA] = {
-            key: roa
-            for roa in new_json_roas
-            if (key := (roa["asn"], roa["prefix"], roa["maxLength"]))
-        }
-
         # Yield changes
-        removed_roa_keys: set[Tuple[int, str, int]] = set(old_roas) - set(new_roas)
+        removed_roa_keys: set[str] = old_roas_keys - new_roas_keys
         for key in removed_roa_keys:
             yield self.serialize_vrp(old_roas[key], 0)
 
-        added_roa_keys: set[Tuple[int, str, int]] = set(new_roas) - set(old_roas)
+        added_roa_keys: set[str] = new_roas_keys - old_roas_keys
         for key in added_roa_keys:
             yield self.serialize_vrp(new_roas[key], 1)
 
     def calculate_bgpsec_key_diffs(
         self,
-        old_json_bgpsec_keys: list[BGPSecKey],
-        new_json_bgpsec_keys: list[BGPSecKey],
+        old_bgpsec_keys: dict[str, BGPSecKey],
+        new_bgpsec_keys: dict[str, BGPSecKey],
     ) -> Generator[bytes]:
         """
         Calculates the differences in the BGPSec Keys between the old and the new JSON file and
@@ -194,9 +188,9 @@ class RPKIClient:
 
         Arguments:
         ----------
-        old_json_roas: list[BGPSecKey]
+        old_roas: list[BGPSecKey]
             BGPSec Keys in the old JSON file
-        new_json_roas: list[BGPSecKey]
+        new_roas: list[BGPSecKey]
             BGPSec Keys in the new JSON file
 
         Returns:
@@ -204,69 +198,17 @@ class RPKIClient:
         Generator[bytes]: Yields serialized router key PDUs
         """
         # Generate hashabale data structures
-        old_bgpsec_keys: dict[Tuple[int, str, str], BGPSecKey] = {
-            key: bgpsec_key
-            for bgpsec_key in old_json_bgpsec_keys
-            if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
-        }
-
-        new_bgpsec_keys: dict[Tuple[int, str, str], BGPSecKey] = {
-            key: bgpsec_key
-            for bgpsec_key in new_json_bgpsec_keys
-            if (key := (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]))
-        }
+        old_bgpsec_key_keys: set[str] = set(old_bgpsec_keys.keys())
+        new_bgpsec_key_keys: set[str] = set(new_bgpsec_keys.keys())
 
         # Yield changes
-        removed_bgpsec_key_keys: set[Tuple[int, str, str]] = set(old_bgpsec_keys) - set(
-            new_bgpsec_keys
-        )
+        removed_bgpsec_key_keys: set[str] = old_bgpsec_key_keys - new_bgpsec_key_keys
         for key in removed_bgpsec_key_keys:
             yield self.serialize_bgpsec_key(old_bgpsec_keys[key], 0)
 
-        added_bgpsec_key_keys: set[Tuple[int, str, str]] = set(new_bgpsec_keys) - set(
-            old_bgpsec_keys
-        )
+        added_bgpsec_key_keys: set[str] = new_bgpsec_key_keys - old_bgpsec_key_keys
         for key in added_bgpsec_key_keys:
             yield self.serialize_bgpsec_key(new_bgpsec_keys[key], 1)
-
-    def serialize_unique_bgpsec_key(self, bgpsec_keys: list[BGPSecKey]) -> Generator[bytes]:
-        """
-        Serialize a list of BGPSec Keus, while removing duplicates. The flags field is set to 1.
-
-        Arguments:
-        ----------
-        roas: list[BGPSecKey]
-            The list of BGPSec Keys to serialize
-
-        Returns:
-        --------
-            Generator[bytes]: Serialized BGPSec Keys
-        """
-        # Mapping everything into a dict and then returning the values removes the duplicates
-        unique_bgpsec_keys = {
-            (bgpsec_key["asn"], bgpsec_key["ski"], bgpsec_key["pubkey"]): bgpsec_key
-            for bgpsec_key in bgpsec_keys
-        }
-        for bgpsec_key in unique_bgpsec_keys.values():
-            yield self.serialize_bgpsec_key(bgpsec_key, 1)
-
-    def serialize_unique_vrps(self, roas: list[ROA]) -> Generator[bytes]:
-        """
-        Serialize a list of ROAS into VRPs, while removing duplicates. The flags field is set to 1.
-
-        Arguments:
-        ----------
-        roas: list[ROA]
-            The list of ROAs to serialize
-
-        Returns:
-        --------
-            Generator[bytes]: Serialized VRPs
-        """
-        # Mapping everything into a dict and then returning the values removes the duplicates
-        unique_roas = {(roa["asn"], roa["prefix"], roa["maxLength"]): roa for roa in roas}
-        for roa in unique_roas.values():
-            yield self.serialize_vrp(roa, 1)
 
     def serialize_bgpsec_key(self, bgpsec_key: BGPSecKey, flags: int) -> bytes:
         """
@@ -332,7 +274,7 @@ class RPKIClient:
             asn=roa["asn"],
         )
 
-    def purge(self, expire: int = 7200):
+    def purge(self):
         """
         Delete expired JSON files
 
@@ -344,78 +286,134 @@ class RPKIClient:
         self.json = {
             _serial: _json
             for _serial, _json in self.json.items()
-            if _json["timestamp"] > datetime.now(timezone.utc).timestamp() - expire
+            if _json["timestamp"] > datetime.now(timezone.utc).timestamp() - self.expire
         }
 
-    async def load(self, path: str | os.PathLike[str]) -> bool:
+    async def load_json_file(self) -> JSON:
         """
-        Loads the content of the file. Ignores files that have been already loaded.
-
-        Arguments:
-        ----------
-        path: str | os.PathLike[str]
-            Path to the file
+        Loads the content of the file. Remove expired ROAs and BGPSec Keys
 
         Returns:
         --------
-        bool: True if the file was loaded, False if it was ignored
+        JSON: The JSON file
         """
-        async with aiofiles.open(path, mode="rb") as file:
+        async with aiofiles.open(self.json_file, mode="rb") as file:
             data: bytes = await file.read()
 
-        new_json_hash = hashlib.sha256(data).hexdigest()
-        new_json: JSONContent = orjson.loads(data)  # pylint: disable=no-member
+        # This is not JSONContent yet, it will be after we convert ROAs, BGPSec Keys and ASPAS to
+        # dictionaries
+        json_content = orjson.loads(data)  # pylint: disable=no-member
+
+        # Check if the file is expired
+        buildtime = datetime.fromisoformat(json_content["metadata"]["buildtime"])
+        expire_moment = buildtime + timedelta(seconds=self.expire)
+        if datetime.now(timezone.utc) > expire_moment:
+            raise ValueError("The JSON file is expired")
+
+        # Remove expired items and convert lists to tuples to calculate the hash
+        current_timestamp = datetime.now(timezone.utc).timestamp()
+
+        roas: dict[str, ROA] = {}
+        bgpsec_keys: dict[str, BGPSecKey] = {}
+        match self.version:
+            case 0:
+                for roa in json_content["roas"]:
+                    if current_timestamp >= roa["expires"]:
+                        continue
+                    key = f"{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}"
+                    roas[key] = roa
+                json_content["roas"] = roas
+                # Do not parse BGPsec Keys
+                json_content["bgpsec_keys"] = {}
+            case 1:
+                for roa in json_content["roas"]:
+                    if current_timestamp >= roa["expires"]:
+                        continue
+                    key = f"{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}"
+                    roas[key] = roa
+                json_content["roas"] = roas
+
+                for bgpsec_key in json_content["bgpsec_keys"]:
+                    if current_timestamp >= bgpsec_key["expires"]:
+                        continue
+                    key = f"{bgpsec_key["asn"]}|{bgpsec_key["ski"]}|{bgpsec_key["pubkey"]}"
+                    bgpsec_keys[key] = bgpsec_key
+                json_content["bgpsec_keys"] = bgpsec_keys
+            case _:
+                raise ValueError(f"Unsupported version number: {self.version}")
+
+        match self.version:
+            # The hash is calculated only on the items that exist for the version
+            case 0:
+                json_hash = str(hash("_".join(roas)))
+            case 1:
+                json_hash = f"{hash("_".join(roas))}_{hash("_".join(bgpsec_keys))}"
+            case _:
+                raise ValueError(f"Unsupported version number: {self.version}")
+
+        return JSON(
+            content=json_content,
+            hash=json_hash,
+            timestamp=buildtime.timestamp(),
+            diffs=JSONDiffs(vrps=[], router_keys=[]),
+        )
+
+    async def reload(self) -> bool:
+        """
+        Purge old JSON files, load the new one, calculate diffs, and increment serial.
+
+        Return:
+        -------
+        bool: True if the process completed successfully.
+        """
+        self.purge()
+
+        new_json: JSON = await self.load_json_file()
 
         # Check if the new and the current file are the same
         try:
-            if new_json_hash == self.json[self.serial]["hash"]:
+            if new_json["hash"] == self.json[self.serial]["hash"]:
                 return False
         except KeyError:
             pass
+        except ValueError:
+            # ValueError means the file is expired and so are VRPs and BGPSec Keys
+            new_json["content"]["roas"] = {}
+            new_json["content"]["bgpsec_keys"] = {}
+            new_json["content"]["aspas"] = {}
 
-        for serial, old_json in self.json.items():
+        # Calculate diffs
+        for old_json in self.json.values():
+            # Do not waste CPU cycles if not needed
             match self.version:
                 case 0:
-                    # Re-generate diffs
-                    vrps: list[bytes] = list(
-                        self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
+                    vrps = self.calculate_roa_diffs(
+                        new_roas=new_json["content"]["roas"],
+                        old_roas=old_json["content"]["roas"],
                     )
-                    # Add a new list of changes
-                    self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=[])
-                    # Update the list of VRPs
-                    self.vrps = list(self.serialize_unique_vrps(roas=new_json["roas"]))
-                    # Update the list of Router Keys
-                    self.router_keys = []
+                    old_json["diffs"] = {"vrps": list(vrps), "router_keys": []}
                 case 1:
-                    # Re-generate diffs
-                    vrps: list[bytes] = list(
-                        self.calculate_roa_diffs(old_json["content"]["roas"], new_json["roas"])
+                    vrps = self.calculate_roa_diffs(
+                        new_roas=new_json["content"]["roas"],
+                        old_roas=old_json["content"]["roas"],
                     )
-                    router_keys: list[bytes] = list(
-                        self.calculate_bgpsec_key_diffs(
-                            old_json["content"]["bgpsec_keys"], new_json["bgpsec_keys"]
-                        )
+                    router_keys = self.calculate_bgpsec_key_diffs(
+                        new_bgpsec_keys=new_json["content"]["bgpsec_keys"],
+                        old_bgpsec_keys=old_json["content"]["bgpsec_keys"],
                     )
-                    # Add a new list of changes
-                    self.json[serial]["diffs"] = JSONDiffs(vrps=vrps, router_keys=router_keys)
-                    # Update the list of VRPs
-                    self.vrps = list(self.serialize_unique_vrps(roas=new_json["roas"]))
-                    # Update the list of Router Keys
-                    self.router_keys = list(
-                        self.serialize_unique_bgpsec_key(bgpsec_keys=new_json["bgpsec_keys"])
-                    )
+                    old_json["diffs"] = {"vrps": list(vrps), "router_keys": list(router_keys)}
                 case _:
-                    continue
+                    raise ValueError(f"Unsupported version number: {self.version}")
 
-        # Save new JSON
+        self.vrps = [self.serialize_vrp(vrp, 1) for vrp in new_json["content"]["roas"].values()]
+        self.router_keys = [
+            self.serialize_bgpsec_key(bgpsec_key, 1)
+            for bgpsec_key in new_json["content"]["bgpsec_keys"].values()
+        ]
+
         self.serial = self.serial + 1
-        self.last_update = datetime.now(timezone.utc).isoformat()
-        self.json[self.serial] = JSON(
-            content=new_json,
-            hash=new_json_hash,
-            timestamp=datetime.now(timezone.utc).timestamp(),
-            diffs={"vrps": [], "router_keys": []},
-        )
+        self.json[self.serial] = new_json
+
         self.update_prometheus()
 
         logger.info("Serial for version %d changed to: %d", self.version, self.serial)
@@ -437,7 +435,6 @@ class RPKIClient:
                     prometheus.rpki_v0_serial.inc()
                 prometheus.rpki_v0_bgpsec_keys.set(len(self.vrps))
                 prometheus.rpki_v0_vrps.set(len(self.router_keys))
-
             case 1:
                 if increment_serial:
                     prometheus.rpki_v1_serial.inc()
