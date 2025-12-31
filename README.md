@@ -1,5 +1,5 @@
 # pyRTR
-[Resource Public Key Infrastructure (RPKI) to Router Protocol Version 1](https://datatracker.ietf.org/doc/html/rfc6810) cache written in Python.
+[Resource Public Key Infrastructure (RPKI) to Router Protocol Version 1](https://www.rfc-editor.org/rfc/rfc8210) cache written in Python.
 
 ![pyRTR logo](pyRTR.png "pyRTR logo")
 
