@@ -21,7 +21,7 @@ pyRTR has no configuration file and takes no CLI argument. Parameters can be set
 | PYRTR_HOST |  Host to bind the RTR and HTTP servers to | localhost |
 | PYRTR_PORT |  Port to bind the RTR server to (HTTP port is <ins>always</ins> 8080) | 8323 |
 | PYRTR_JSONFILE |  Path to the RPKI-client JSON file | json |
-| PYRTR_RELOAD | The interval after the RPKIclient JSON file is realoaded | 900 |
+| PYRTR_RELOAD | The amount of seconds after which the RPKIclient JSON file is realoaded | 900 |
 | PYRTR_REFRESH |  RTR Refresh Interval in seconds * | 3600 |
 | PYRTR_RETRY |  RTR Retry Interval in seconds * | 600 |
 | PYRTR_EXPIRE |  RTR Expire Interval in seconds * | 7200 |
