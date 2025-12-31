@@ -69,7 +69,10 @@ async def http_server(
     """
 
     async def get_clients(_: web.Request) -> web.Response:  # NOSONAR
-        clients = {"clients": list(cache_registry.keys())}
+        clients = [
+            {"client": client, "version": f"V{cache.version}"}
+            for client, cache in cache_registry.items()
+        ]
         return web.json_response(clients, dumps=lambda data: json.dumps(data, indent=2))
 
     async def get_health(_: web.Request) -> web.Response:  # NOSONAR
