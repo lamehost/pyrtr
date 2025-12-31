@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from ipaddress import ip_network
 from typing import TypedDict
 
-import aiofiles
 import orjson
 
 from pyrtr import prometheus
@@ -289,7 +288,7 @@ class RPKIClient:
             if _json["timestamp"] > datetime.now(timezone.utc).timestamp() - self.expire
         }
 
-    async def load_json_file(self) -> JSON:
+    def load_json_file(self) -> JSON:
         """
         Loads the content of the file. Remove expired ROAs and BGPSec Keys
 
@@ -297,8 +296,8 @@ class RPKIClient:
         --------
         JSON: The JSON file
         """
-        async with aiofiles.open(self.json_file, mode="rb") as file:
-            data: bytes = await file.read()
+        with open(self.json_file, mode="rb") as file:
+            data: bytes = file.read()
 
         # This is not JSONContent yet, it will be after we convert ROAs, BGPSec Keys and ASPAS to
         # dictionaries
@@ -358,7 +357,7 @@ class RPKIClient:
             diffs=JSONDiffs(vrps=[], router_keys=[]),
         )
 
-    async def reload(self) -> bool:
+    def reload(self) -> bool:
         """
         Purge old JSON files, load the new one, calculate diffs, and increment serial.
 
@@ -368,7 +367,7 @@ class RPKIClient:
         """
         self.purge()
 
-        new_json: JSON = await self.load_json_file()
+        new_json: JSON = self.load_json_file()
 
         # Check if the new and the current file are the same
         try:

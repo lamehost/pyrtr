@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+from multiprocessing import Process
 from typing import TypedDict
 
 from aiohttp import web
@@ -134,10 +135,9 @@ async def json_reloader(
             rpki_client.purge()
 
             try:
-                # Load new entries
-                await rpki_client.reload()
+                # Load new entries in a parallel process
+                Process(target=rpki_client.reload).run()
             except Exception as error:  # pylint: disable=broad-exception-caught
-                raise error
                 logger.error("Unable to load the RPKI client JSON file: %s", error)
                 await asyncio.sleep(sleep)
                 continue
