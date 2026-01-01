@@ -188,9 +188,9 @@ class RPKIClient:
 
         Arguments:
         ----------
-        old_roas: dict[str, BGPSecKey]
+        old_bgpsec_keys: dict[str, BGPSecKey]
             BGPSec Keys in the old JSON file
-        new_roas: dict[str, BGPSecKey]
+        new_bgpsec_keys: dict[str, BGPSecKey]
             BGPSec Keys in the new JSON file
 
         Returns:
