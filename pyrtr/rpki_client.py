@@ -386,8 +386,13 @@ class RPKIClient:
         # Calculate hash
         json_hash: str = str(
             hash(
-                orjson.dumps(json_content["roas"], option=orjson.OPT_SORT_KEYS)
-                + orjson.dumps(json_content["bgpsec_keys"], option=orjson.OPT_SORT_KEYS)
+                orjson.dumps(  # pylint: disable=no-member
+                    json_content["roas"], option=orjson.OPT_SORT_KEYS  # pylint: disable=no-member
+                )
+                + orjson.dumps(  # pylint: disable=no-member
+                    json_content["bgpsec_keys"],
+                    option=orjson.OPT_SORT_KEYS,  # pylint: disable=no-member
+                )
             )
         )
 
