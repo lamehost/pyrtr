@@ -155,9 +155,9 @@ class RPKIClient:
 
         Arguments:
         ----------
-        old_roas: list[ROA]
+        old_roas: dict[str, ROA]
             ROAs in the old JSON file
-        new_roas: list[ROA]
+        new_roas: dict[str, ROA]
             ROAs in the new JSON file
 
         Returns:
@@ -188,9 +188,9 @@ class RPKIClient:
 
         Arguments:
         ----------
-        old_roas: list[BGPSecKey]
+        old_roas: dict[str, BGPSecKey]
             BGPSec Keys in the old JSON file
-        new_roas: list[BGPSecKey]
+        new_roas: dict[str, BGPSecKey]
             BGPSec Keys in the new JSON file
 
         Returns:
@@ -290,7 +290,18 @@ class RPKIClient:
         }
 
     def _reduce_roas(self, roas: list[ROA]) -> dict[str, ROA]:
-        # Remove expired items and convert lists to tuples to calculate the hash
+        """
+        Reduces a list of ROAs into a dict of unique and valid ROAs.
+
+        Arguments:
+        ----------
+        roas: list[ROA]
+            The ROAs to reduce
+
+        Returns:
+        --------
+        dict[str, ROA]: The reduced ROAs
+        """
         current_timestamp = datetime.now(timezone.utc).timestamp()
 
         reduced_roas: dict[str, ROA] = {}
@@ -303,7 +314,18 @@ class RPKIClient:
         return reduced_roas
 
     def _reduce_bgpsec_keys(self, bgpsec_keys: list[BGPSecKey]) -> dict[str, BGPSecKey]:
-        # Remove expired items and convert lists to tuples to calculate the hash
+        """
+        Reduces a list of BGPSec Keys into a dict of unique and valid BGPSec Keys.
+
+        Arguments:
+        ----------
+        roas: list[BGPSecKey]
+            The BGPSec Keys to reduce
+
+        Returns:
+        --------
+        dict[str, BGPSecKey]: The reduced BGPSec Keys
+        """
         current_timestamp = datetime.now(timezone.utc).timestamp()
 
         reduced_bgpsec_keys: dict[str, BGPSecKey] = {}
