@@ -134,13 +134,14 @@ class RPKIClient:
     serial: int = 0
     json_file: str | os.PathLike[str]
     expire: int
-    json: dict[int, JSON] = {}
-    vrps: list[bytes] = []
-    router_keys: list[bytes] = []
-    last_update: str | None = None
     versions: int
 
     def __init__(self, version: int, json_file: str | os.PathLike[str], expire: int = 7200):
+        self.json: dict[int, JSON] = {}
+        self.vrps: list[bytes] = []
+        self.router_keys: list[bytes] = []
+        self.last_update: str | None = None
+
         self.version = version
         self.json_file = json_file
         self.expire = expire
@@ -226,7 +227,7 @@ class RPKIClient:
         bytes: The serialized BGPSec Key
         """
         # This is not stated anywhere in the rpki-client docs
-        ski = base64.b16decode(bgpsec_key["ski"])
+        ski = base64.b16decode(bgpsec_key["ski"], casefold=False)
         pubkey = base64.b64decode(bgpsec_key["pubkey"])
 
         return router_key.serialize(
@@ -301,61 +302,70 @@ class RPKIClient:
 
         # This is not JSONContent yet, it will be after we convert ROAs, BGPSec Keys and ASPAS to
         # dictionaries
-        json_content = orjson.loads(data)  # pylint: disable=no-member
+        try:
+            json_content = orjson.loads(data)  # pylint: disable=no-member
+        except orjson.JSONDecodeError as error:  # pylint: disable=no-member
+            raise ValueError(f"Unable to decode the file: {error}") from error
 
         # Check if the file is expired
         buildtime = datetime.fromisoformat(json_content["metadata"]["buildtime"])
         expire_moment = buildtime + timedelta(seconds=self.expire)
+
         if datetime.now(timezone.utc) > expire_moment:
-            raise ValueError("The JSON file is expired")
+            # The file is expired and so are VRPs, BGPSec Keys and ASPAs
+            logger.warning("The JSON file is expired")
+            json_content["roas"] = {}
+            json_content["bgpsec_keys"] = {}
+            json_content["aspas"] = {}
+            json_hash = ""
+        else:
+            # Remove expired items and convert lists to tuples to calculate the hash
+            current_timestamp = datetime.now(timezone.utc).timestamp()
 
-        # Remove expired items and convert lists to tuples to calculate the hash
-        current_timestamp = datetime.now(timezone.utc).timestamp()
+            roas: dict[str, ROA] = {}
+            bgpsec_keys: dict[str, BGPSecKey] = {}
+            match self.version:
+                case 0:
+                    # Parse ROAs and do not parse BGPSec Keys
+                    for roa in json_content["roas"]:
+                        if current_timestamp >= roa["expires"]:
+                            continue
+                        key = f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}'
+                        roas[key] = roa
+                case 1:
+                    # Parse ROAs
+                    for roa in json_content["roas"]:
+                        if current_timestamp >= roa["expires"]:
+                            continue
+                        key = f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}'
+                        roas[key] = roa
+                    json_content["roas"] = roas
+                    # Parse BGPSec Keys
+                    for bgpsec_key in json_content["bgpsec_keys"]:
+                        if current_timestamp >= bgpsec_key["expires"]:
+                            continue
+                        key = f'{bgpsec_key["asn"]}|{bgpsec_key["ski"]}|{bgpsec_key["pubkey"]}'
+                        bgpsec_keys[key] = bgpsec_key
+                    json_content["bgpsec_keys"] = bgpsec_keys
+                case _:
+                    raise ValueError(f"Unsupported version number: {self.version}")
+            json_content["roas"] = roas
+            json_content["bgpsec_keys"] = bgpsec_keys
 
-        roas: dict[str, ROA] = {}
-        bgpsec_keys: dict[str, BGPSecKey] = {}
-        match self.version:
-            case 0:
-                for roa in json_content["roas"]:
-                    if current_timestamp >= roa["expires"]:
-                        continue
-                    key = f"{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}"
-                    roas[key] = roa
-                json_content["roas"] = roas
-                # Do not parse BGPsec Keys
-                json_content["bgpsec_keys"] = {}
-            case 1:
-                for roa in json_content["roas"]:
-                    if current_timestamp >= roa["expires"]:
-                        continue
-                    key = f"{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}"
-                    roas[key] = roa
-                json_content["roas"] = roas
+            # TODO: Refactor this to be more robust
+            json_hash: str = "".join(
+                [
+                    str(hash("".join(json_content["roas"]))),
+                    str(hash("".join(json_content["bgpsec_keys"]))),
+                ]
+            )
 
-                for bgpsec_key in json_content["bgpsec_keys"]:
-                    if current_timestamp >= bgpsec_key["expires"]:
-                        continue
-                    key = f"{bgpsec_key["asn"]}|{bgpsec_key["ski"]}|{bgpsec_key["pubkey"]}"
-                    bgpsec_keys[key] = bgpsec_key
-                json_content["bgpsec_keys"] = bgpsec_keys
-            case _:
-                raise ValueError(f"Unsupported version number: {self.version}")
-
-        match self.version:
-            # The hash is calculated only on the items that exist for the version
-            case 0:
-                json_hash = str(hash("_".join(roas)))
-            case 1:
-                json_hash = f"{hash("_".join(roas))}_{hash("_".join(bgpsec_keys))}"
-            case _:
-                raise ValueError(f"Unsupported version number: {self.version}")
-
-        return JSON(
-            content=json_content,
-            hash=json_hash,
-            timestamp=buildtime.timestamp(),
-            diffs=JSONDiffs(vrps=[], router_keys=[]),
-        )
+        return {
+            "content": json_content,
+            "hash": json_hash,
+            "timestamp": buildtime.timestamp(),
+            "diffs": {"vrps": [], "router_keys": []},
+        }
 
     def reload(self) -> bool:
         """
@@ -375,11 +385,6 @@ class RPKIClient:
                 return False
         except KeyError:
             pass
-        except ValueError:
-            # ValueError means the file is expired and so are VRPs and BGPSec Keys
-            new_json["content"]["roas"] = {}
-            new_json["content"]["bgpsec_keys"] = {}
-            new_json["content"]["aspas"] = {}
 
         # Calculate diffs
         for old_json in self.json.values():
@@ -432,13 +437,13 @@ class RPKIClient:
             case 0:
                 if increment_serial:
                     prometheus.rpki_v0_serial.inc()
-                prometheus.rpki_v0_bgpsec_keys.set(len(self.vrps))
-                prometheus.rpki_v0_vrps.set(len(self.router_keys))
+                prometheus.rpki_v0_vrps.set(len(self.vrps))
+                prometheus.rpki_v0_bgpsec_keys.set(len(self.router_keys))
             case 1:
                 if increment_serial:
                     prometheus.rpki_v1_serial.inc()
-                prometheus.rpki_v1_bgpsec_keys.set(len(self.vrps))
-                prometheus.rpki_v1_vrps.set(len(self.router_keys))
+                prometheus.rpki_v1_vrps.set(len(self.vrps))
+                prometheus.rpki_v1_bgpsec_keys.set(len(self.router_keys))
             case _:
                 logger.warning(
                     "Not exporting the RPKI serial counter for version: %d", self.version

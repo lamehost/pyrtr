@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import random
-from multiprocessing import Process
 from typing import TypedDict
 
 from aiohttp import web
@@ -76,10 +75,20 @@ async def http_server(
         return web.json_response(clients, dumps=lambda data: json.dumps(data, indent=2))
 
     async def get_health(_: web.Request) -> web.Response:  # NOSONAR
+        try:
+            v0_last_update = rpki_clients[0].last_update
+        except KeyError:
+            v0_last_update = None
+
+        try:
+            v1_last_update = rpki_clients[1].last_update
+        except KeyError:
+            v1_last_update = None
+
         status = Status(
             rpki_client={
-                "V0": RPKIClientStats(last_update=rpki_clients[0].last_update),
-                "V1": RPKIClientStats(last_update=rpki_clients[1].last_update),
+                "V0": RPKIClientStats(last_update=v0_last_update),
+                "V1": RPKIClientStats(last_update=v1_last_update),
             },
             sessions={"V0": sessions[0], "V1": sessions[1]},
             pid=os.getpid(),
@@ -138,8 +147,8 @@ async def json_reloader(
             rpki_client.purge()
 
             try:
-                # Load new entries in a parallel process
-                Process(target=rpki_client.reload).run()
+                # Load new entries
+                rpki_client.reload()
             except Exception as error:  # pylint: disable=broad-exception-caught
                 logger.error("Unable to load the RPKI client JSON file: %s", error)
                 await asyncio.sleep(sleep)
@@ -198,7 +207,7 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     try:
         del cache_registry[cache.remote]
         prometheus.clients.dec()
-        logger.info("Unregisterd cache: %s", cache.remote)
+        logger.info("Unregistered cache: %s", cache.remote)
     except KeyError:
         logger.error("Attempted to unregister a non existing cache client: %s", cache.remote)
 
@@ -318,15 +327,15 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         await server.serve_forever()
 
 
-async def pyrtr(  # pylint: disable=too-many-arguments
+async def run_cache(  # pylint: disable=too-many-arguments
     host: str,
     port: int,
     json_file: str | os.PathLike[str],
     reload: int,
     *,
     refresh: int = 3600,
-    expire: int = 600,
-    retry: int = 7200,
+    retry: int = 600,
+    expire: int = 7200,
 ) -> None:
     """
     Reloads the content of the RPKI JSON output every half `refresh`, and starts the RTR server.

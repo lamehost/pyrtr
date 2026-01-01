@@ -6,33 +6,32 @@ import asyncio
 import logging
 import sys
 
-from pyrtr.pyrtr import pyrtr
+from pyrtr.pyrtr import run_cache
 from pyrtr.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     """
     Initializes logging and starts the server
     """
     settings = Settings()
 
     # Initialize logging
+    # The settings module validate that LOGLEVEL is a valid logging attibute.
     loglevel = getattr(logging, settings.LOGLEVEL)
-
     logging.basicConfig(
         format="%(asctime)s %(levelname)-8s %(message)s",
         level=loglevel,
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
     logger.info("Loglevel set to: %s", settings.LOGLEVEL)
 
     # Start the server
     try:
         asyncio.run(
-            pyrtr(
+            run_cache(
                 str(settings.HOST),
                 settings.PORT,
                 settings.JSONFILE,
@@ -44,6 +43,7 @@ def main():
         )
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user (KeyboardInterrupt)")
+        sys.exit(1)
     except Exception as error:  # pylint: disable=broad-exception-caught
         logger.exception("Unhandled exception while running the server: %s", error)
         sys.exit(1)
