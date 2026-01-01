@@ -29,25 +29,24 @@ def main() -> None:
     logger.info("Loglevel set to: %s", settings.LOGLEVEL)
 
     # Start the server
-    try:
-        asyncio.run(
-            run_cache(
-                str(settings.HOST),
-                settings.PORT,
-                settings.JSONFILE,
-                settings.RELOAD,
-                refresh=settings.REFRESH,
-                retry=settings.RETRY,
-                expire=settings.EXPIRE,
-            )
+    asyncio.run(
+        run_cache(
+            str(settings.HOST),
+            settings.PORT,
+            settings.JSONFILE,
+            settings.RELOAD,
+            refresh=settings.REFRESH,
+            retry=settings.RETRY,
+            expire=settings.EXPIRE,
         )
-    except KeyboardInterrupt:
-        logger.info("Shutdown requested by user (KeyboardInterrupt)")
-        sys.exit(1)
-    except Exception as error:  # pylint: disable=broad-exception-caught
-        logger.exception("Unhandled exception while running the server: %s", error)
-        sys.exit(1)
+    )
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by user (KeyboardInterrupt)")
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        logger.exception("Unhandled exception while running the server: %s", error)
+        sys.exit(1)
