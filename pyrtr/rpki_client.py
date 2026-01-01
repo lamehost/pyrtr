@@ -350,10 +350,7 @@ class RPKIClient:
 
         # This is not JSONContent yet, it will be after we convert ROAs, BGPSec Keys and ASPAS to
         # dictionaries
-        try:
-            json_content = orjson.loads(data)  # pylint: disable=no-member
-        except orjson.JSONDecodeError as error:  # pylint: disable=no-member
-            raise ValueError(f"Unable to decode the file: {error}") from error
+        json_content = orjson.loads(data)  # pylint: disable=no-member
 
         # Check if the file is expired
         buildtime = datetime.fromisoformat(json_content["metadata"]["buildtime"])
@@ -411,7 +408,10 @@ class RPKIClient:
         """
         self.purge()
 
-        new_json: JSON = self.load_json_file()
+        try:
+            new_json: JSON = self.load_json_file()
+        except (orjson.JSONDecodeError, KeyError) as error:  # pylint: disable=no-member
+            raise ValueError(f"Unable to load the file: {error}") from error
 
         # Check if the new and the current file are the same
         try:
