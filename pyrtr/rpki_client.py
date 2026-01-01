@@ -227,7 +227,7 @@ class RPKIClient:
         bytes: The serialized BGPSec Key
         """
         # This is not stated anywhere in the rpki-client docs
-        ski = base64.b16decode(bgpsec_key["ski"], casefold=False)
+        ski = base64.b16decode(bgpsec_key["ski"], casefold=True)
         pubkey = base64.b64decode(bgpsec_key["pubkey"])
 
         return router_key.serialize(
@@ -289,6 +289,32 @@ class RPKIClient:
             if _json["timestamp"] > datetime.now(timezone.utc).timestamp() - self.expire
         }
 
+    def _reduce_roas(self, roas: list[ROA]) -> dict[str, ROA]:
+        # Remove expired items and convert lists to tuples to calculate the hash
+        current_timestamp = datetime.now(timezone.utc).timestamp()
+
+        reduced_roas: dict[str, ROA] = {}
+        for roa in roas:
+            if current_timestamp >= roa["expires"]:
+                continue
+            key = f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}'
+            reduced_roas[key] = roa
+
+        return reduced_roas
+
+    def _reduce_bgpsec_keys(self, bgpsec_keys: list[BGPSecKey]) -> dict[str, BGPSecKey]:
+        # Remove expired items and convert lists to tuples to calculate the hash
+        current_timestamp = datetime.now(timezone.utc).timestamp()
+
+        reduced_bgpsec_keys: dict[str, BGPSecKey] = {}
+        for bgpsec_key in bgpsec_keys:
+            if current_timestamp >= bgpsec_key["expires"]:
+                continue
+            key = f'{bgpsec_key["asn"]}|{bgpsec_key["ski"]}|{bgpsec_key["pubkey"]}'
+            reduced_bgpsec_keys[key] = bgpsec_key
+
+        return reduced_bgpsec_keys
+
     def load_json_file(self) -> JSON:
         """
         Loads the content of the file. Remove expired ROAs and BGPSec Keys
@@ -311,54 +337,40 @@ class RPKIClient:
         buildtime = datetime.fromisoformat(json_content["metadata"]["buildtime"])
         expire_moment = buildtime + timedelta(seconds=self.expire)
 
+        # Set values baseline
+        roas: dict[str, ROA] = {}
+        bgpsec_keys: dict[str, BGPSecKey] = {}
+        aspas: dict[str, ASPA] = {}
+
+        # Parse values
         if datetime.now(timezone.utc) > expire_moment:
             # The file is expired and so are VRPs, BGPSec Keys and ASPAs
             logger.warning("The JSON file is expired")
-            json_content["roas"] = {}
-            json_content["bgpsec_keys"] = {}
-            json_content["aspas"] = {}
-            json_hash = ""
         else:
-            # Remove expired items and convert lists to tuples to calculate the hash
-            current_timestamp = datetime.now(timezone.utc).timestamp()
-
-            roas: dict[str, ROA] = {}
-            bgpsec_keys: dict[str, BGPSecKey] = {}
             match self.version:
                 case 0:
                     # Parse ROAs and do not parse BGPSec Keys
-                    for roa in json_content["roas"]:
-                        if current_timestamp >= roa["expires"]:
-                            continue
-                        key = f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}'
-                        roas[key] = roa
+                    roas = self._reduce_roas(json_content["roas"])
                 case 1:
                     # Parse ROAs
-                    for roa in json_content["roas"]:
-                        if current_timestamp >= roa["expires"]:
-                            continue
-                        key = f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}'
-                        roas[key] = roa
-                    json_content["roas"] = roas
+                    roas = self._reduce_roas(json_content["roas"])
                     # Parse BGPSec Keys
-                    for bgpsec_key in json_content["bgpsec_keys"]:
-                        if current_timestamp >= bgpsec_key["expires"]:
-                            continue
-                        key = f'{bgpsec_key["asn"]}|{bgpsec_key["ski"]}|{bgpsec_key["pubkey"]}'
-                        bgpsec_keys[key] = bgpsec_key
-                    json_content["bgpsec_keys"] = bgpsec_keys
+                    bgpsec_keys = self._reduce_bgpsec_keys(json_content["bgpsec_keys"])
                 case _:
                     raise ValueError(f"Unsupported version number: {self.version}")
-            json_content["roas"] = roas
-            json_content["bgpsec_keys"] = bgpsec_keys
 
-            # TODO: Refactor this to be more robust
-            json_hash: str = "".join(
-                [
-                    str(hash("".join(json_content["roas"]))),
-                    str(hash("".join(json_content["bgpsec_keys"]))),
-                ]
+        # Update JSON
+        json_content["roas"] = roas
+        json_content["bgpsec_keys"] = bgpsec_keys
+        json_content["aspas"] = aspas
+
+        # Calculate hash
+        json_hash: str = str(
+            hash(
+                orjson.dumps(json_content["roas"], option=orjson.OPT_SORT_KEYS)
+                + orjson.dumps(json_content["bgpsec_keys"], option=orjson.OPT_SORT_KEYS)
             )
+        )
 
         return {
             "content": json_content,
