@@ -33,7 +33,7 @@ class EndOfDataV1(EndOfDataV0):
     expire: int
 
 
-def serialize(  # pylint:disable=too-many-arguments
+def serialize(  # pylint: disable=too-many-arguments
     version: int,
     session: int,
     serial: int,

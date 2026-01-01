@@ -26,7 +26,7 @@ class IPv4Prefix(TypedDict):
     asn: int
 
 
-def serialize(  # pylint:disable=too-many-arguments, too-many-positional-arguments
+def serialize(  # pylint: disable=too-many-arguments, too-many-positional-arguments
     version: int, flags: int, prefix_length: int, max_length: int, prefix: bytes, asn: int
 ) -> bytes:
     """

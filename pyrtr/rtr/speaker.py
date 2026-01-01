@@ -60,7 +60,7 @@ class FatalRTRError(Exception):
     """
 
 
-class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attributes
+class Speaker(asyncio.Protocol, ABC):
     """
     Abstract Base Class that defines the RTR spekaer
 
@@ -123,14 +123,14 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         data: bytes
             The serialized PDU to send
         """
-        self.transport.write(data)  # pyright: ignore
+        self.transport.write(data)
 
     def write_serial_notify(self) -> None:
         """
         Writes a Serial Notify PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = serial_notify.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -143,7 +143,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         Writes a Serial Query PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -156,7 +156,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         Writes a Reset Query PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -169,7 +169,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         Writes a Cache Response PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = cache_response.serialize(
             version=self.version,
@@ -187,7 +187,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         list[bytes]:
             List of serialized VRPs
         """
-        self.transport.writelines(vrps)  # pyright: ignore
+        self.transport.writelines(vrps)
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
     def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
@@ -204,7 +204,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
             Expire Interval in seconds: Expire: 7200
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = end_of_data.serialize(
             version=self.version,
@@ -222,7 +222,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         Writes a Cache Reset PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = cache_reset.serialize(version=self.version)
         self.write(pdu)
@@ -238,9 +238,9 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
             List of serialized Router Keys
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
-        self.transport.writelines(router_keys)  # pyright: ignore
+        self.transport.writelines(router_keys)
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
     def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
@@ -257,7 +257,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
             Error diagnostic message. Default: bytes()
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         _pdu = error_report.serialize(version=self.version, error=error, pdu=pdu, text=text)
         self.write(_pdu)
@@ -287,7 +287,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
         """
         # https://datatracker.ietf.org/doc/html/rfc8210#section-12
         if self.version is None:
-            raise InternalError("Inconsistent version state.")  # NOSONAR
+            raise InternalError("Inconsistent version state.")
 
         pdu = error_report.unserialize(self.version, data)
 
@@ -344,7 +344,7 @@ class Speaker(asyncio.Protocol, ABC):  # pylint: disable=too-many-instance-attri
 
         return error.fatal
 
-    def connection_made(self, transport: asyncio.Transport) -> None:  # pyright: ignore
+    def connection_made(self, transport: asyncio.Transport) -> None:
         """
         Called when a connection is made.
 
