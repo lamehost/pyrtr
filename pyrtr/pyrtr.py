@@ -2,7 +2,6 @@
 
 import asyncio
 import functools
-import json
 import logging
 import os
 import random
@@ -31,8 +30,8 @@ class Status(TypedDict):
     Defines the set of metadata describing the application status
     """
 
-    rpki_client: dict[str, RPKIClientStats]
-    sessions: dict[str, int]
+    rpki_clients: dict[str, RPKIClientStats]
+    sessions: dict[str, int | None]
     pid: int
 
 
@@ -42,7 +41,7 @@ async def http_server(
     sessions: dict[int, int],
     rpki_clients: dict[int, RPKIClient],
     cache_registry: dict[str, Cache],
-) -> web.TCPSite:
+) -> None:
     """
     Runs the HTTP server providing three endpoints:
      - /clients: List of connected clients
@@ -61,40 +60,40 @@ async def http_server(
         RPKIClient instance
     cache_registry: dict[str, Cache]
         The Cache registry
-
-    Returns:
-    --------
-    web.TCPSite: The TCP server coroutine
     """
 
     async def get_clients(_: web.Request) -> web.Response:  # NOSONAR
         clients = [
-            {"client": client, "version": f"V{cache.version}"}
-            for client, cache in cache_registry.items()
+            {"client": client_id, "version": f"V{cache.version}"}
+            for client_id, cache in cache_registry.items()
         ]
-        return web.json_response(clients, dumps=lambda data: json.dumps(data, indent=2))
+        return web.json_response(clients)
 
     async def get_health(_: web.Request) -> web.Response:  # NOSONAR
         try:
             v0_last_update = rpki_clients[0].last_update
+            v0_session = sessions[0]
         except KeyError:
             v0_last_update = None
+            v0_session = None
 
         try:
             v1_last_update = rpki_clients[1].last_update
+            v1_session = sessions[1]
         except KeyError:
             v1_last_update = None
+            v1_session = None
 
-        status = Status(
-            rpki_client={
-                "V0": RPKIClientStats(last_update=v0_last_update),
-                "V1": RPKIClientStats(last_update=v1_last_update),
+        status: Status = {
+            "rpki_clients": {
+                "V0": {"last_update": v0_last_update},
+                "V1": {"last_update": v1_last_update},
             },
-            sessions={"V0": sessions[0], "V1": sessions[1]},
-            pid=os.getpid(),
-        )
+            "sessions": {"V0": v0_session, "V1": v1_session},
+            "pid": os.getpid(),
+        }
 
-        return web.json_response(status, dumps=lambda data: json.dumps(data, indent=2))
+        return web.json_response(status)
 
     webapp = web.Application()
     webapp.router.add_get(
@@ -134,7 +133,7 @@ async def json_reloader(
 
     Arguments:
     ----------
-    rpki_client: RPKIClient
+    rpki_clients: dict[int, RPKIClient]
         RPKIClient instances (one per version)
     cache_registry: dict[str, Cache]
         The Cache registry
@@ -151,7 +150,6 @@ async def json_reloader(
                 rpki_client.reload()
             except Exception as error:  # pylint: disable=broad-exception-caught
                 logger.error("Unable to load the RPKI client JSON file: %s", error)
-                await asyncio.sleep(sleep)
                 continue
 
             logger.info(
@@ -362,7 +360,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
         0: RPKIClient(version=0, json_file=json_file, expire=expire),
         1: RPKIClient(version=1, json_file=json_file, expire=expire),
     }
-    sessions: dict[int, int] = {0: random.randrange(0, 65535), 1: random.randrange(0, 65535)}
+    sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
     await asyncio.gather(
