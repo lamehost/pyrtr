@@ -7,7 +7,7 @@ import logging
 import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from typing import Callable, Literal, Self, TypedDict
+from typing import Callable, Self, TypedDict
 
 from .pdu import (
     cache_reset,
@@ -70,22 +70,22 @@ class Speaker(asyncio.Protocol, ABC):
         self,
         sessions: dict[int, int],
         *,
-        connect_callback: Callable[[Self], None] | Literal[False] = False,
-        disconnect_callback: Callable[[Self], None] | Literal[False] = False,
+        connect_callback: Callable[[Self], None] | None = None,
+        disconnect_callback: Callable[[Self], None] | None = None,
     ):
         """
         Arguments:
         ----------
         session: int
             The RTR session ID
-        connect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+        connect_callback: Callable[[Self], None] | None = None
             The method executed after the connection is established
-        disconnect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+        disconnect_callback: Callable[[Self], None] | None = None
             The method executed after the connection is terminated
         """
         self.sessions: dict[int, int] = sessions
-        self.connect_callback: Callable[[Self], None] | Literal[False] = connect_callback
-        self.disconnect_callback: Callable[[Self], None] | Literal[False] = disconnect_callback
+        self.connect_callback: Callable[[Self], None] | None = connect_callback
+        self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
         self.current_serial: int = 0
 
