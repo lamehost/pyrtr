@@ -305,7 +305,7 @@ class Speaker(asyncio.Protocol, ABC):
             case 8:
                 raise UnexpectedProtocolVersionError(message=message, data=pdu["pdu"])
             case _:
-                ...
+                logger.warning("Received an unsupported error report type: %d", pdu["error"])
 
     def handle_pdu_error_exception(self, header: RTRHeader | None, error: PDUError) -> bool:
         """
