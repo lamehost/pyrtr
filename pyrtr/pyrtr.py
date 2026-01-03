@@ -163,6 +163,10 @@ async def json_reloader(
                 if rpki_client.version != cache.version:
                     continue
 
+                if not cache.current_serial or not cache.rpki_client:
+                    # Version is still unknown
+                    continue
+
                 # Notify clients if needed
                 if cache.current_serial != cache.rpki_client.serial:
                     try:

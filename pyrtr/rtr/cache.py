@@ -70,9 +70,10 @@ class Cache(Speaker):
             Retry Interval in seconds. Default: 600
         expire: int
             Expire Interval in seconds: Expire: 7200
-        """        
+        """
 
         self.rpki_clients = rpki_clients
+        self.rpki_client: RPKIClient | None = None
 
         self.refresh = refresh
         self.expire = expire
@@ -115,7 +116,7 @@ class Cache(Speaker):
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
-        if not self.current_serial:
+        if not self.current_serial or not self.rpki_client:
             raise NoDataAvailableError("No data available yet")
 
         serial = int(pdu["serial"])
@@ -154,7 +155,7 @@ class Cache(Speaker):
         reset_query.unserialize(self.version, data)
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
-        if not self.current_serial:
+        if not self.current_serial or not self.rpki_client:
             raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()
@@ -179,6 +180,11 @@ class Cache(Speaker):
         data: bytes
             The entire content of the PDU
         """
+        if self.version is not None and self.rpki_client is None:
+            # Most of the Class values are set here after version negotiation
+            self.rpki_client = self.rpki_clients[self.version]
+            self.current_serial = self.rpki_client.serial
+
         match header["type"]:
             case serial_query.TYPE:
                 logger.debug("Serial query PDU received from %s", self.remote)

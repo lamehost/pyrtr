@@ -9,13 +9,12 @@ from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import Callable, Literal, Self, TypedDict
 
-from pyrtr.rpki_client import RPKIClient
-
 from .pdu import (
     cache_reset,
     cache_response,
     end_of_data,
     error_report,
+    reset_query,
     serial_notify,
     serial_query,
 )
@@ -66,7 +65,6 @@ class Speaker(asyncio.Protocol, ABC):
     """
 
     version: int | None = None
-    rpki_clients: dict[int, RPKIClient]
 
     def __init__(
         self,
@@ -156,9 +154,7 @@ class Speaker(asyncio.Protocol, ABC):
         if self.version is None:
             raise InternalError("Inconsistent version state.")
 
-        pdu = serial_query.serialize(
-            version=self.version, session=self.session, serial=self.current_serial
-        )
+        pdu = reset_query.serialize(version=self.version)
         self.write(pdu)
         logger.debug("Reset query PDU sent to %s", self.remote)
 
@@ -343,8 +339,8 @@ class Speaker(asyncio.Protocol, ABC):
         return error.fatal
 
     def connection_made(  # pyright: ignore[reportIncompatibleMethodOverride]
-            self, transport: asyncio.Transport
-        ) -> None:
+        self, transport: asyncio.Transport
+    ) -> None:
         """
         Called when a connection is made.
 
@@ -367,13 +363,11 @@ class Speaker(asyncio.Protocol, ABC):
         exc: Exception | None
             The exception that forced the connection to be closed
         """
-        if exc is not None:
-            try:
-                raise exc
-            except ConnectionResetError:
-                logger.info("Connection reset by the remote host: %s", self.remote)
-            except BrokenPipeError:
-                logger.info("Connection died unexpectedly: %s", self.remote)
+        if isinstance(exc, ConnectionResetError):
+            logger.info("Connection reset by the remote host: %s", self.remote)
+
+        if isinstance(exc, BrokenPipeError):
+            logger.info("Connection died unexpectedly: %s", self.remote)
 
         if self.disconnect_callback:
             self.disconnect_callback(self)
@@ -402,10 +396,6 @@ class Speaker(asyncio.Protocol, ABC):
             if self.version is None:
                 try:
                     self.version = SupportedVersions(header["version"]).value
-
-                    # Most of the Class values are set here after version negotiation
-                    self.rpki_client = self.rpki_clients[self.version]
-                    self.current_serial = self.rpki_client.serial
                     self.session = self.sessions[self.version]
                 except ValueError as error:
                     raise UnexpectedProtocolVersionError(
