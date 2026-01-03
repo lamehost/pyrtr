@@ -153,7 +153,7 @@ async def json_reloader(
                 continue
 
             logger.info(
-                "JSON file reloaded (version %d): %d VRPs, %d BGPsec Keys",
+                "JSON file reloaded (V%d): %d VRPs, %d BGPsec Keys",
                 rpki_client.version,
                 len(rpki_client.vrps),
                 len(rpki_client.router_keys),
@@ -188,7 +188,7 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     """
     cache_registry[cache.remote] = cache
     prometheus.clients.inc()
-    logger.info("Registered cache: %s", cache.remote)
+    logger.info("Registered cache instance: %s", cache.remote)
 
 
 def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
@@ -205,7 +205,7 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     try:
         del cache_registry[cache.remote]
         prometheus.clients.dec()
-        logger.info("Unregistered cache: %s", cache.remote)
+        logger.info("Unregistered cache instance: %s", cache.remote)
     except KeyError:
         logger.error("Attempted to unregister a non existing cache client: %s", cache.remote)
 
@@ -244,9 +244,9 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
 
     cache = Cache(
         sessions,
-        rpki_clients,
         connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
         disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
+        rpki_clients=rpki_clients,
         refresh=refresh,
         retry=retry,
         expire=expire,

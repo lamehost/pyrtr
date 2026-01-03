@@ -39,44 +39,39 @@ class RTRHeader(TypedDict):
 class Cache(Speaker):
     """
     Handles the the sequences of PDU transmissions on an RTR Cache
-
-    Arguments:
-    ----------
-    sessions: dict[int, int]
-        The session IDs (one per version)
-    rpki_client: RPKIClient instance
-        RPKIClient instances (one per version)
-    cache_registry: Cache
-        The RTR Cache registry
-    register_callback: Callable[[str, Self], None] | Literal[False]
-        If not False, the function executed to register the Cache.
-        Takes 2 argument the Cache ID and Cache instance
-    unregister_callback: Callable[[str], None] | Literal[False]
-        If not False, the function executed to register the Cache.
-        Takes 1 argument the Cache ID
-    refresh: int
-        Refresh Interval in seconds. Default: 3600
-    retry: int
-        Retry Interval in seconds. Default: 600
-    expire: int
-        Expire Interval in seconds: Expire: 7200
     """
-
-    register_callback: Callable[[str, Self], None] | Literal[False]
-    unregister_callback: Callable[[str], None] | Literal[False]
 
     @override
     def __init__(  # pylint: disable=too-many-arguments
         self,
         sessions: dict[int, int],
-        rpki_clients: dict[int, RPKIClient],
         *,
         connect_callback: Callable[[Self], None] | Literal[False] = False,
         disconnect_callback: Callable[[Self], None] | Literal[False] = False,
+        rpki_clients: dict[int, RPKIClient],
         refresh: int = 3600,
         expire: int = 600,
         retry: int = 7200,
     ):
+        """
+        Arguments:
+        ----------
+        session: int
+            The RTR session ID
+        connect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+            The method executed after the connection is established
+        disconnect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+            The method executed after the connection is terminated
+        rpki_clients: dict[int, RPKIClient]:
+            The RPKIClient instances
+        refresh: int
+            Refresh Interval in seconds. Default: 3600
+        retry: int
+            Retry Interval in seconds. Default: 600
+        expire: int
+            Expire Interval in seconds: Expire: 7200
+        """        
+
         self.rpki_clients = rpki_clients
 
         self.refresh = refresh

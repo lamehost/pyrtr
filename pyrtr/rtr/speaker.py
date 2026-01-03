@@ -63,23 +63,10 @@ class FatalRTRError(Exception):
 class Speaker(asyncio.Protocol, ABC):
     """
     Abstract Base Class that defines the RTR spekaer
-
-    Arguments:
-    ----------
-    session: int
-        The RTR session ID
     """
 
-    remote: str
     version: int | None = None
-    rpki_clients: dict[int, RPKIClient] = {}
-    rpki_client: RPKIClient
-    sessions: dict[int, int]
-    session: int
-    current_serial: int = 0
-    transport: asyncio.BaseTransport
-    connect_callback: Callable[[Self], None] | Literal[False] = False
-    disconnect_callback: Callable[[Self], None] | Literal[False] = False
+    rpki_clients: dict[int, RPKIClient]
 
     def __init__(
         self,
@@ -88,10 +75,21 @@ class Speaker(asyncio.Protocol, ABC):
         connect_callback: Callable[[Self], None] | Literal[False] = False,
         disconnect_callback: Callable[[Self], None] | Literal[False] = False,
     ):
-        self.sessions = sessions
+        """
+        Arguments:
+        ----------
+        session: int
+            The RTR session ID
+        connect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+            The method executed after the connection is established
+        disconnect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+            The method executed after the connection is terminated
+        """
+        self.sessions: dict[int, int] = sessions
+        self.connect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+        self.disconnect_callback: Callable[[Self], None] | Literal[False] = disconnect_callback
 
-        self.connect_callback = connect_callback
-        self.disconnect_callback = disconnect_callback
+        self.current_serial: int = 0
 
     def parse_header(self, data: bytes) -> RTRHeader:
         """
@@ -123,14 +121,14 @@ class Speaker(asyncio.Protocol, ABC):
         data: bytes
             The serialized PDU to send
         """
-        self.transport.write(data)
+        self.transport.write(data)  # pyright: ignore
 
     def write_serial_notify(self) -> None:
         """
         Writes a Serial Notify PDU to the wire
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = serial_notify.serialize(
             version=self.version, session=self.session, serial=self.current_serial
@@ -187,7 +185,7 @@ class Speaker(asyncio.Protocol, ABC):
         list[bytes]:
             List of serialized VRPs
         """
-        self.transport.writelines(vrps)
+        self.transport.writelines(vrps)  # pyright: ignore
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
     def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
@@ -240,7 +238,7 @@ class Speaker(asyncio.Protocol, ABC):
         if self.version is None:
             raise InternalError("Inconsistent version state.")
 
-        self.transport.writelines(router_keys)
+        self.transport.writelines(router_keys)  # pyright: ignore
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
     def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
@@ -344,7 +342,9 @@ class Speaker(asyncio.Protocol, ABC):
 
         return error.fatal
 
-    def connection_made(self, transport: asyncio.Transport) -> None:
+    def connection_made(  # pyright: ignore[reportIncompatibleMethodOverride]
+            self, transport: asyncio.Transport
+        ) -> None:
         """
         Called when a connection is made.
 
