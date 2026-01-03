@@ -8,6 +8,7 @@ import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import Callable, Self, TypedDict
+from uuid import uuid4
 
 from .pdu import (
     cache_reset,
@@ -61,7 +62,7 @@ class FatalRTRError(Exception):
 
 class Speaker(asyncio.Protocol, ABC):
     """
-    Abstract Base Class that defines the RTR spekaer
+    Abstract Base Class that defines the RTR speaker
     """
 
     version: int | None = None
@@ -91,7 +92,7 @@ class Speaker(asyncio.Protocol, ABC):
 
     def parse_header(self, data: bytes) -> RTRHeader:
         """
-        Reads and arses the RTR PDU header.
+        Reads and parses the RTR PDU header.
 
         Returns:
         --------
@@ -174,7 +175,7 @@ class Speaker(asyncio.Protocol, ABC):
 
     def write_vrps(self, vrps: list[bytes]) -> None:
         """
-        Writes IP prefxies to the wire
+        Writes IP prefixes to the wire
 
         Arguments:
         ----------
@@ -348,10 +349,15 @@ class Speaker(asyncio.Protocol, ABC):
              Transport representing the connection.
         """
         # Find the remote socket data
-        host, port = transport.get_extra_info("peername")
-        self.remote = f"{host}:{port}"
+        try:
+            host, port = transport.get_extra_info("peername")
+            self.remote = f"{host}:{port}"
+        except TypeError:
+            # Raised using neither TCP nor UDP
+            self.remote = str(uuid4())
+
         # Set the transport for this host
-        self.transport = transport
+        self.transport: asyncio.Transport = transport
 
         if self.connect_callback:
             self.connect_callback(self)
@@ -405,7 +411,7 @@ class Speaker(asyncio.Protocol, ABC):
                 # Version changed
                 if self.version != header["version"]:
                     raise UnexpectedProtocolVersionError(
-                        f"Negotatited protocol version is {self.version},"
+                        f"Negotiated protocol version is {self.version},"
                         f" received version is {header['version']}"
                     )
 
