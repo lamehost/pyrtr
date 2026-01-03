@@ -19,7 +19,7 @@ def main() -> None:
     settings = Settings()
 
     # Initialize logging
-    # The settings module validate that LOGLEVEL is a valid logging attibute.
+    # The settings module validate that LOGLEVEL is a valid logging attribute.
     loglevel = getattr(logging, settings.LOGLEVEL)
     logging.basicConfig(
         format="%(asctime)s %(levelname)-8s %(message)s",
