@@ -416,6 +416,5 @@ class Speaker(asyncio.Protocol, ABC):
             self.handle_pdu(header, data)
         except PDUError as error:
             exit_loop = self.handle_pdu_error_exception(header, error)
-            if exit_loop:
-                if self.transport is not None:
+            if exit_loop and self.transport is not None:
                     self.transport.close()
