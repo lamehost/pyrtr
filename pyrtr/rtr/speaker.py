@@ -54,12 +54,6 @@ class RTRHeader(TypedDict):
     length: int
 
 
-class FatalRTRError(Exception):
-    """
-    Raised when a fatal RTR error is received
-    """
-
-
 class Speaker(asyncio.Protocol, ABC):
     """
     Abstract Base Class that defines the RTR speaker
@@ -89,6 +83,9 @@ class Speaker(asyncio.Protocol, ABC):
         self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
         self.current_serial: int = 0
+        self.remote: str | None = None
+        self.transport: asyncio.Transport | None = None
+        self.session: int | None = None
 
     def parse_header(self, data: bytes) -> RTRHeader:
         """
@@ -96,7 +93,7 @@ class Speaker(asyncio.Protocol, ABC):
 
         Returns:
         --------
-        bytes, RTRHeader: The binary RTR header data and the parsed RTR header
+        RTRHeader: The parsed RTR header
         """
         # Read data
         if len(data) < 8:
@@ -126,7 +123,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Serial Notify PDU to the wire
         """
-        if self.version is None:
+        if self.version is None or self.session is None:
             raise InternalError("Inconsistent version state.")  # NOSONAR
 
         pdu = serial_notify.serialize(
@@ -139,7 +136,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Serial Query PDU to the wire
         """
-        if self.version is None:
+        if self.version is None or self.session is None:
             raise InternalError("Inconsistent version state.")
 
         pdu = serial_query.serialize(
@@ -163,7 +160,7 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Writes a Cache Response PDU to the wire
         """
-        if self.version is None:
+        if self.version is None or self.session is None:
             raise InternalError("Inconsistent version state.")
 
         pdu = cache_response.serialize(
@@ -198,7 +195,7 @@ class Speaker(asyncio.Protocol, ABC):
         expire: int
             Expire Interval in seconds: Expire: 7200
         """
-        if self.version is None:
+        if self.version is None or self.session is None:
             raise InternalError("Inconsistent version state.")
 
         pdu = end_of_data.serialize(
@@ -357,7 +354,7 @@ class Speaker(asyncio.Protocol, ABC):
             self.remote = str(uuid4())
 
         # Set the transport for this host
-        self.transport: asyncio.Transport = transport
+        self.transport = transport
 
         if self.connect_callback:
             self.connect_callback(self)
@@ -379,7 +376,7 @@ class Speaker(asyncio.Protocol, ABC):
             self.disconnect_callback(self)
 
         # Close the writer stream
-        if not self.transport.is_closing():
+        if self.transport is not None and not self.transport.is_closing():
             self.transport.close()
 
     def data_received(self, data: bytes) -> None:
@@ -420,4 +417,5 @@ class Speaker(asyncio.Protocol, ABC):
         except PDUError as error:
             exit_loop = self.handle_pdu_error_exception(header, error)
             if exit_loop:
-                self.transport.close()
+                if self.transport is not None:
+                    self.transport.close()

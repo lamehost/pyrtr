@@ -190,6 +190,9 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     cache_registry: dict[str, Cache]
         Cache registry
     """
+    if cache.remote is None:
+        raise RuntimeError("Attempting to register an uninitialized cache")
+
     cache_registry[cache.remote] = cache
     prometheus.clients.inc()
     logger.info("Registered cache instance: %s", cache.remote)
@@ -206,6 +209,9 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     cache_registry: dict[str, Cache]
         Cache registry
     """
+    if cache.remote is None:
+        raise RuntimeError("Attempting to unregister an uninitialized cache")
+
     try:
         del cache_registry[cache.remote]
         prometheus.clients.dec()
