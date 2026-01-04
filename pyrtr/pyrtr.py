@@ -153,7 +153,7 @@ async def json_reloader(
                 continue
 
             logger.info(
-                "JSON file reloaded (V%d): %d VRPs, %d BGPsec Keys",
+                "JSON file reloaded for V%d: %d VRPs, %d BGPsec Keys",
                 rpki_client.version,
                 len(rpki_client.vrps),
                 len(rpki_client.router_keys),

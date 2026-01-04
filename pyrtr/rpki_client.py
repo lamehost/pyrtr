@@ -456,7 +456,7 @@ class RPKIClient:
 
         self.update_prometheus()
 
-        logger.info("Serial for version %d changed to: %d", self.version, self.serial)
+        logger.info("Serial for V%d changed to: %d", self.version, self.serial)
 
         return True
 
