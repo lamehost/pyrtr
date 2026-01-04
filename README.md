@@ -13,7 +13,7 @@
  - JunOS
 
 ## Configuration
-pyRTR has no configuration file and takes no CLI argument. Parameters can be set through the following ENV variables:
+pyRTR has no configuration files and takes no CLI arguments. Parameters can be set through the following ENV variables:
 
 | Variable | Description | Default |
 | -------- | ------------| ----- |
