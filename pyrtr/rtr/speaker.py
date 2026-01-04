@@ -329,6 +329,14 @@ class Speaker(asyncio.Protocol, ABC):
                 str(error),
             )
 
+        if self.transport is None:
+            # This should never happen, but still handling it
+            return True
+        
+        if self.version is None:
+            # Handle rogue data
+            return True
+            
         if header is None or header["type"] != error_report.TYPE:
             self.write_error_report(
                 error=error.code, pdu=error.data, text=bytes(str(error), "utf-8")
