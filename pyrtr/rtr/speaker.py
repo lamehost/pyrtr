@@ -400,7 +400,7 @@ class Speaker(asyncio.Protocol, ABC):
                 try:
                     self.version = SupportedVersions(header["version"]).value
                     self.session = self.sessions[self.version]
-                except ValueError as error:
+                except ValueError:
                     if self.transport is not None:
                         self.transport.close()
                         return
