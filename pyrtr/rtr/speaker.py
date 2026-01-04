@@ -329,14 +329,6 @@ class Speaker(asyncio.Protocol, ABC):
                 str(error),
             )
 
-        if self.transport is None:
-            # This should never happen, but still handling it
-            return True
-        
-        if self.version is None:
-            # Handle rogue data
-            return True
-            
         if header is None or header["type"] != error_report.TYPE:
             self.write_error_report(
                 error=error.code, pdu=error.data, text=bytes(str(error), "utf-8")
@@ -409,6 +401,10 @@ class Speaker(asyncio.Protocol, ABC):
                     self.version = SupportedVersions(header["version"]).value
                     self.session = self.sessions[self.version]
                 except ValueError as error:
+                    if self.transport is not None:
+                        self.transport.close()
+                        return
+                except KeyError as error:
                     raise UnexpectedProtocolVersionError(
                         f"Unsupported protocol version: {header['version']}"
                     ) from error
@@ -423,6 +419,11 @@ class Speaker(asyncio.Protocol, ABC):
             # Handle the PDU
             self.handle_pdu(header, data)
         except PDUError as error:
-            exit_loop = self.handle_pdu_error_exception(header, error)
-            if exit_loop and self.transport is not None:
+            if self.version:
+                # If the version happned AFTER version was negotaited
+                exit_loop = self.handle_pdu_error_exception(header, error)
+                if exit_loop and self.transport is not None:
                     self.transport.close()
+            elif self.transport:
+                # If the error happened BEFORE version was negotiated
+                self.transport.close()
