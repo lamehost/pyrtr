@@ -12,6 +12,11 @@
  - FRR
  - JunOS
 
+## Run with Docker
+```
+$ env PYRTR_JSONFILE=/json docker run -v $(pwd)/json:/json -p 8323:8323 lamehost/pyrtr
+```
+
 ## Configuration
 pyRTR has no configuration files and takes no CLI arguments. Parameters can be set through the following ENV variables:
 
