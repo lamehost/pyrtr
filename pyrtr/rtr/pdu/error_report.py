@@ -88,6 +88,9 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> ErrorRepo
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
+        if fields[1] != TYPE:
+            raise TypeError("Not a valid Error Report PDU.")
+
         if fields[3] > 65535:
             raise CorruptDataError(f"PDU is too long: {fields[2]}")
 

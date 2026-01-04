@@ -83,6 +83,9 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> RouterKey
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
+        if fields[1] != TYPE:
+            raise TypeError("Not a valid Router Key PDU.")
+
         if fields[2] not in [0, 1]:
             raise CorruptDataError(f"Invalid pdu flags: {fields[2]}")
 
