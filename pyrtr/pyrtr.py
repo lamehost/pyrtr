@@ -69,6 +69,11 @@ async def http_server(
         ]
         return web.json_response(clients)
 
+    async def get_copies(request: web.Request) -> web.Response:  # NOSONAR
+        version = int(request.match_info["version"])
+        dump = await datasources[version].dump()
+        return web.Response(body=dump, content_type="application/octet-stream")
+
     async def get_health(_: web.Request) -> web.Response:  # NOSONAR
         try:
             v0_last_update = datasources[0].last_update
@@ -96,21 +101,10 @@ async def http_server(
         return web.json_response(status)
 
     webapp = web.Application()
-    webapp.router.add_get(
-        "/clients",
-        get_clients,
-        allow_head=True,
-    )
-    webapp.router.add_get(
-        "/healthz",
-        get_health,
-        allow_head=True,
-    )
-    webapp.router.add_get(
-        "/metrics",
-        prometheus_aiohttp_handler(),
-        allow_head=True,
-    )
+    webapp.router.add_get("/clients", get_clients, allow_head=True)
+    webapp.router.add_get("/healthz", get_health, allow_head=True)
+    webapp.router.add_get("/metrics", prometheus_aiohttp_handler(), allow_head=True)
+    webapp.router.add_get(r"/copies/{version:\d+}", get_copies, allow_head=True)
 
     runner = web.AppRunner(webapp)
     await runner.setup()
