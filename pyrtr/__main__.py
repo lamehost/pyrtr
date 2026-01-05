@@ -31,10 +31,12 @@ def main() -> None:
     # Start the server
     asyncio.run(
         run_cache(
-            str(settings.HOST),
-            settings.PORT,
-            settings.JSONFILE,
-            settings.RELOAD,
+            host=str(settings.HOST),
+            rtr_port=settings.RTR_PORT,
+            http_port=settings.HTTP_PORT,
+            datasource=settings.DATASOURCE,
+            location=settings.LOCATION,
+            reload=settings.RELOAD,
             refresh=settings.REFRESH,
             retry=settings.RETRY,
             expire=settings.EXPIRE,

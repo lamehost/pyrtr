@@ -31,8 +31,10 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 | -------- | ------------| ----- |
 | PYRTR_LOGLEVEL |  Sets the log level | INFO |
 | PYRTR_HOST |  Host to bind the RTR and HTTP servers to | localhost |
-| PYRTR_PORT |  Port to bind the RTR server to (HTTP port is <ins>always</ins> 8080) | 8323 |
-| PYRTR_JSONFILE |  Path to the RPKI-client JSON file | json |
+| PYRTR_RTR_PORT |  Port to bind the RTR server to. Use False to disable the Cache | 8323 |
+| PYRTR_HTTP_PORT | Port to bind the HTTP server to. Use False to disable the HTTP server | 8080 |
+| PYRTR_DATASOURCE | Datasource type to use | RPKICLIENT |
+| PYRTR_LOCATION |  Path to the RPKI-client JSON file | json |
 | PYRTR_RELOAD | The amount of seconds after which the RPKIclient JSON file is realoaded | 900 |
 | PYRTR_REFRESH |  RTR Refresh Interval in seconds * | 3600 |
 | PYRTR_RETRY |  RTR Retry Interval in seconds * | 600 |
@@ -43,5 +45,6 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 ## HTTP endpoints
 The following HTTP endpoints are available at HTTP port 8080:
  - **/clients**: List of connected clients
+ - **/copies**: Msgpack packed representation of the Datasource copies in memory
  - **/healthz**: Application status
  - **/metrics**: Prometheus metrics

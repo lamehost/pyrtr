@@ -5,7 +5,7 @@ import functools
 import logging
 import os
 import random
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from aiohttp import web
 from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp_handler
@@ -110,7 +110,7 @@ async def http_server(
     await runner.setup()
     site = web.TCPSite(runner, host, port)
 
-    logger.info("Web server available at http://%s:%d/", host, port)
+    logger.info("Web server listening at http://%s:%d/", host, port)
     await site.start()
 
     while True:
@@ -308,20 +308,11 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         port,
     )
 
-    # Find the sockets the server will bind to
-    listening_sockets = ", ".join(
-        [
-            f"{listening_host}:{listening_port}"
-            for _socket in server.sockets
-            if (listening_host := _socket.getsockname()[0])
-            if (listening_port := _socket.getsockname()[1])
-        ]
-    )
-
     async with server:
         logger.info(
-            "Listening on %s. V0 Session: %d. V1 Session: %d",
-            listening_sockets,
+            "RTR Cache listening at %s:%d. V0 Session: %d. V1 Session: %d",
+            host,
+            port,
             sessions[0],
             sessions[1],
         )
@@ -331,8 +322,10 @@ async def rtr_server(  # pylint: disable=too-many-arguments
 
 async def run_cache(  # pylint: disable=too-many-arguments
     host: str,
-    port: int,
-    json_file: str | os.PathLike[str],
+    rtr_port: int | Literal[None],
+    http_port: int | Literal[None],
+    datasource: str,
+    location: str,
     reload: int,
     *,
     refresh: int = 3600,
@@ -346,8 +339,10 @@ async def run_cache(  # pylint: disable=too-many-arguments
     ----------
     host: str
         The host to bind to
-    port: int
-        The TCP port to bind to
+    rtr_port: int
+        The TCP port to bind the RTR Cache to
+    http_port: int
+        The TCP port to bind the HTTP server to
     json_file: str | os.PathLike[str]
         The path pointing to the JSON file
     reload: int
@@ -360,24 +355,37 @@ async def run_cache(  # pylint: disable=too-many-arguments
         Expire Interval in seconds: Expire: 7200
     """
 
-    rpki_clients: dict[int, Datasource] = {
-        0: RPKIClient(version=0, location=json_file, expire=expire),
-        1: RPKIClient(version=1, location=json_file, expire=expire),
-    }
+    match datasource:
+        case "RPKICLIENT":
+            datasource_instances: dict[int, Datasource] = {
+                0: RPKIClient(version=0, location=location, expire=expire),
+                1: RPKIClient(version=1, location=location, expire=expire),
+            }
+        case _:
+            raise ValueError(f"Unsupported datasource: {datasource}")
+        
     sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
-    await asyncio.gather(
-        data_reloader(rpki_clients, cache_registry, reload),
-        rtr_server(
-            host,
-            port,
-            sessions,
-            rpki_clients,
-            cache_registry,
-            refresh=refresh,
-            expire=expire,
-            retry=retry,
-        ),
-        http_server(host, 8080, sessions, rpki_clients, cache_registry),
-    )
+    coroutines = [data_reloader(datasource_instances, cache_registry, reload)]
+
+    if rtr_port is not None:
+        coroutines.append(
+            rtr_server(
+                host,
+                rtr_port,
+                sessions,
+                datasource_instances,
+                cache_registry,
+                refresh=refresh,
+                expire=expire,
+                retry=retry,
+            )
+        )
+
+    if http_port is not None:
+        coroutines.append(
+            http_server(host, http_port, sessions, datasource_instances, cache_registry)  
+        )
+
+    await asyncio.gather(*coroutines)
