@@ -59,8 +59,6 @@ class Speaker(asyncio.Protocol, ABC):
     Abstract Base Class that defines the RTR speaker
     """
 
-    version: int | None = None
-
     def __init__(
         self,
         sessions: dict[int, int],
@@ -86,6 +84,7 @@ class Speaker(asyncio.Protocol, ABC):
         self.remote: str | None = None
         self.transport: asyncio.Transport | None = None
         self.session: int | None = None
+        self.version: int | None = None
 
     def parse_header(self, data: bytes) -> RTRHeader:
         """
