@@ -26,6 +26,8 @@ isort = "^7.0.0"
 bandit = "^1.8.6"
 pylint = "^4.0.2"
 
+[tool.poetry.scripts]
+pyrtr = "pyrtr.__main__:main"
 
 [tool.poetry.dependencies]
 pydantic-settings = "^2.11.0"
