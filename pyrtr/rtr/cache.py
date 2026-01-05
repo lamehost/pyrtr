@@ -4,11 +4,11 @@ Defines the RTR protocol sequence for the RTR Cache
 
 import logging
 from asyncio import Transport
-from typing import Callable, Literal, Self, TypedDict
+from typing import Callable, Self, TypedDict
 
 from typing_extensions import override
 
-from pyrtr.rpki_client import RPKIClient
+from pyrtr.datasources import Datasource
 from pyrtr.rtr.speaker import Speaker
 
 from .pdu import (
@@ -46,9 +46,9 @@ class Cache(Speaker):
         self,
         sessions: dict[int, int],
         *,
-        connect_callback: Callable[[Self], None] | Literal[False] = False,
-        disconnect_callback: Callable[[Self], None] | Literal[False] = False,
-        rpki_clients: dict[int, RPKIClient],
+        connect_callback: Callable[[Self], None] | None = None,
+        disconnect_callback: Callable[[Self], None] | None = None,
+        datasources: dict[int, Datasource],
         refresh: int = 3600,
         expire: int = 600,
         retry: int = 7200,
@@ -62,8 +62,8 @@ class Cache(Speaker):
             The method executed after the connection is established
         disconnect_callback: Callable[[Self], None] | Literal[False] = connect_callback
             The method executed after the connection is terminated
-        rpki_clients: dict[int, RPKIClient]:
-            The RPKIClient instances
+        datasources: dict[int, Datasource]:
+            The Datasource instances
         refresh: int
             Refresh Interval in seconds. Default: 3600
         retry: int
@@ -72,8 +72,8 @@ class Cache(Speaker):
             Expire Interval in seconds: Expire: 7200
         """
 
-        self.rpki_clients = rpki_clients
-        self.rpki_client: RPKIClient | None = None
+        self.datasources = datasources
+        self.datasource: Datasource | None = None
 
         self.refresh = refresh
         self.expire = expire
@@ -116,13 +116,13 @@ class Cache(Speaker):
             raise CorruptDataError(f"Unknown session ID: {pdu['session']}")
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
-        if not self.current_serial or not self.rpki_client:
+        if not self.current_serial or not self.datasource:
             raise NoDataAvailableError("No data available yet")
 
         serial = int(pdu["serial"])
         try:
-            vrps = self.rpki_client.json[serial]["diffs"]["vrps"]
-            router_keys = self.rpki_client.json[serial]["diffs"]["router_keys"]
+            vrps = self.datasource.copies[serial]["diffs"]["vrps"]
+            router_keys = self.datasource.copies[serial]["diffs"]["router_keys"]
         except KeyError:
             # Send Cache Reset in case the serial doesn't exist anymore
             self.write_cache_reset()
@@ -155,14 +155,14 @@ class Cache(Speaker):
         reset_query.unserialize(self.version, data)
 
         # https://datatracker.ietf.org/doc/html/draft-ietf-sidrops-8210bis#section-8.4
-        if not self.current_serial or not self.rpki_client:
+        if not self.current_serial or not self.datasource:
             raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()
 
-        self.write_vrps(vrps=self.rpki_client.vrps)
+        self.write_vrps(vrps=self.datasource.vrps)
         if self.version >= 1:
-            self.write_router_keys(router_keys=self.rpki_client.router_keys)
+            self.write_router_keys(router_keys=self.datasource.router_keys)
 
         self.write_end_of_data(
             refresh=self.refresh,
@@ -180,10 +180,10 @@ class Cache(Speaker):
         data: bytes
             The entire content of the PDU
         """
-        if self.version is not None and self.rpki_client is None:
+        if self.version is not None and self.datasource is None:
             # Most of the Class values are set here after version negotiation
-            self.rpki_client = self.rpki_clients[self.version]
-            self.current_serial = self.rpki_client.serial
+            self.datasource = self.datasources[self.version]
+            self.current_serial = self.datasource.serial
 
         match header["type"]:
             case serial_query.TYPE:

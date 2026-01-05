@@ -11,15 +11,15 @@ from aiohttp import web
 from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp_handler
 
 from pyrtr import prometheus
-from pyrtr.rpki_client import RPKIClient
+from pyrtr.datasources import Datasource, RPKIClient
 from pyrtr.rtr.cache import Cache
 
 logger = logging.getLogger(__name__)
 
 
-class RPKIClientStats(TypedDict):
+class DatasourceStats(TypedDict):
     """
-    Defines the set of metadata describing the status of the RPKIClient JSON file
+    Defines the set of metadata describing the status of the Datasource
     """
 
     last_update: str | None
@@ -30,7 +30,7 @@ class Status(TypedDict):
     Defines the set of metadata describing the application status
     """
 
-    rpki_clients: dict[str, RPKIClientStats]
+    datasources: dict[str, DatasourceStats]
     sessions: dict[str, int | None]
     pid: int
 
@@ -39,7 +39,7 @@ async def http_server(
     host: str,
     port: int,
     sessions: dict[int, int],
-    rpki_clients: dict[int, RPKIClient],
+    datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
 ) -> None:
     """
@@ -56,8 +56,8 @@ async def http_server(
         The TCP port to bind to
     sessions: dict[int, int]
         The session IDs
-    rpki_client: RPKIClient instance
-        RPKIClient instance
+    datasources: Datasource instances
+        Datasource instances (one per version)
     cache_registry: dict[str, Cache]
         The Cache registry
     """
@@ -71,21 +71,21 @@ async def http_server(
 
     async def get_health(_: web.Request) -> web.Response:  # NOSONAR
         try:
-            v0_last_update = rpki_clients[0].last_update
+            v0_last_update = datasources[0].last_update
             v0_session = sessions[0]
         except KeyError:
             v0_last_update = None
             v0_session = None
 
         try:
-            v1_last_update = rpki_clients[1].last_update
+            v1_last_update = datasources[1].last_update
             v1_session = sessions[1]
         except KeyError:
             v1_last_update = None
             v1_session = None
 
         status: Status = {
-            "rpki_clients": {
+            "datasources": {
                 "V0": {"last_update": v0_last_update},
                 "V1": {"last_update": v1_last_update},
             },
@@ -123,18 +123,18 @@ async def http_server(
         await asyncio.sleep(60)
 
 
-async def json_reloader(
-    rpki_clients: dict[int, RPKIClient],
+async def data_reloader(
+    datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
     sleep: int = 900,
 ) -> None:
     """
-    Reloads the content of the RPKI JSON output. Holds `sleeps` seconds between every attempt
+    Reloads the content of Datasource. Holds `sleeps` seconds between every attempt
 
     Arguments:
     ----------
-    rpki_clients: dict[int, RPKIClient]
-        RPKIClient instances (one per version)
+    datasources: dict[int, Datasource]
+        Datasource instances (one per version)
     cache_registry: dict[str, Cache]
         The Cache registry
     sleep: int
@@ -142,40 +142,41 @@ async def json_reloader(
     """
     while True:
         # Remove stale entries
-        for rpki_client in rpki_clients.values():
-            rpki_client.purge()
+        for datasource in datasources.values():
+            await datasource.purge()
 
-            try:
-                # Load new entries
-                rpki_client.reload()
-            except Exception as error:  # pylint: disable=broad-exception-caught
-                logger.error("Unable to load the RPKI client JSON file: %s", error)
-                continue
+            # try:
+            #     # Load new entries
+            #     datasource.reload()
+            # except Exception as error:  # pylint: disable=broad-exception-caught
+            #     logger.error("Unable to reload the data source: %s", error)
+            #     continue
+            await datasource.reload()
 
             logger.info(
-                "JSON file reloaded for V%d: %d VRPs, %d BGPsec Keys",
-                rpki_client.version,
-                len(rpki_client.vrps),
-                len(rpki_client.router_keys),
+                "Data source reloaded for V%d: %d VRPs, %d BGPsec Keys",
+                datasource.version,
+                len(datasource.vrps),
+                len(datasource.router_keys),
             )
 
             for cache in cache_registry.values():
-                if rpki_client.version != cache.version:
+                if datasource.version != cache.version:
                     continue
 
-                if not cache.current_serial or not cache.rpki_client:
+                if not cache.current_serial or not cache.datasource:
                     # Version is still unknown
                     continue
 
                 # Notify clients if needed
-                if cache.current_serial != cache.rpki_client.serial:
+                if cache.current_serial != cache.datasource.serial:
                     try:
                         cache.write_serial_notify()
-                        cache.current_serial = cache.rpki_client.serial
+                        cache.current_serial = cache.datasource.serial
                     except ConnectionResetError:
                         logger.warning("Unable to notify serial to: %s", cache.remote)
 
-        logger.debug("JSON file will be reloaded in: %d seconds", sleep)
+        logger.debug("Datasource will be reloaded in: %d seconds", sleep)
         await asyncio.sleep(sleep)
 
 
@@ -222,7 +223,7 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
 
 def create_cache_instance(  # pylint: disable=too-many-arguments
     sessions: dict[int, int],
-    rpki_clients: dict[int, RPKIClient],
+    datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
     *,
     refresh: int = 3600,
@@ -236,8 +237,8 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
     ----------
     sessions: dict[int, int]
         The session IDs (one per version)
-    rpki_clients: dict[int, RPKIClient]
-        RPKIClient instances (one per version)
+    datasources: dict[int, Datasource]
+        Datasource instances (one per version)
     cache_registry: dict[str, Cache]
         The Cache registry
     refresh: int
@@ -256,7 +257,7 @@ def create_cache_instance(  # pylint: disable=too-many-arguments
         sessions,
         connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
         disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
-        rpki_clients=rpki_clients,
+        datasources=datasources,
         refresh=refresh,
         retry=retry,
         expire=expire,
@@ -269,7 +270,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     host: str,
     port: int,
     sessions: dict[int, int],
-    rpki_clients: dict[int, RPKIClient],
+    datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
     *,
     refresh: int = 3600,
@@ -287,8 +288,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         The TCP port to bind to
     sessions: dict[int, int]
         The session IDs (one per version)
-    rpki_clients: RPKIClient
-        RPKIClient instances (one per version)
+    datasources: dict[int, Datasource]
+        Datasources instances (one per version)
     cache_registry: Cache
         The RTR Cache registry
     refresh: int
@@ -304,7 +305,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     server = await loop.create_server(
         lambda: create_cache_instance(
             sessions,
-            rpki_clients,
+            datasources,
             cache_registry,
             refresh=refresh,
             retry=retry,
@@ -366,15 +367,15 @@ async def run_cache(  # pylint: disable=too-many-arguments
         Expire Interval in seconds: Expire: 7200
     """
 
-    rpki_clients: dict[int, RPKIClient] = {
-        0: RPKIClient(version=0, json_file=json_file, expire=expire),
-        1: RPKIClient(version=1, json_file=json_file, expire=expire),
+    rpki_clients: dict[int, Datasource] = {
+        0: RPKIClient(version=0, location=json_file, expire=expire),
+        1: RPKIClient(version=1, location=json_file, expire=expire),
     }
     sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
     await asyncio.gather(
-        json_reloader(rpki_clients, cache_registry, reload),
+        data_reloader(rpki_clients, cache_registry, reload),
         rtr_server(
             host,
             port,
