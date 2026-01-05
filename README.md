@@ -12,9 +12,16 @@
  - FRR
  - JunOS
 
+## Run with Python
+```
+git clone https://github.com/lamehost/pyrtr.git
+poetry install
+env PYRTR_LOGLEVEL=DEBUG poetry run pyrtr
+```
+
 ## Run with Docker
 ```
-$ env PYRTR_JSONFILE=/json docker run -v $(pwd)/json:/json -p 8323:8323 lamehost/pyrtr
+docker run -v $(pwd)/json:/json -e PYRTR_JSONFILE=/json -p 8323:8323 lamehost/pyrtr
 ```
 
 ## Configuration
