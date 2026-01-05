@@ -145,13 +145,12 @@ async def data_reloader(
         for datasource in datasources.values():
             await datasource.purge()
 
-            # try:
-            #     # Load new entries
-            #     datasource.reload()
-            # except Exception as error:  # pylint: disable=broad-exception-caught
-            #     logger.error("Unable to reload the data source: %s", error)
-            #     continue
-            await datasource.reload()
+            try:
+                # Load new entries
+                await datasource.reload()
+            except Exception as error:  # pylint: disable=broad-exception-caught
+                logger.error("Unable to reload the data source: %s", error)
+                continue
 
             logger.info(
                 "Data source reloaded for V%d: %d VRPs, %d BGPsec Keys",
