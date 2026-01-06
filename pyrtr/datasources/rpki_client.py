@@ -1,5 +1,6 @@
 """Interface towards the rpki-client JSON file"""
 
+import asyncio
 import base64
 import logging
 import os
@@ -206,7 +207,7 @@ class RPKIClient(Datasource):
             pubkey = base64.b64decode(new_bgpsec_key["pubkey"])
             yield self.serialize_router_key(new_bgpsec_key["asn"], ski, pubkey, 1)
 
-    def _reduce_roas(self, roas: list[ROA]) -> dict[str, ROA]:
+    async def _reduce_roas(self, roas: list[ROA]) -> dict[str, ROA]:
         """
         Reduces a list of ROAs into a dict of unique and valid ROAs.
 
@@ -227,10 +228,11 @@ class RPKIClient(Datasource):
                 continue
             key = f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}'
             reduced_roas[key] = roa
+            await asyncio.sleep(0)
 
         return reduced_roas
 
-    def _reduce_bgpsec_keys(self, bgpsec_keys: list[BGPSecKey]) -> dict[str, BGPSecKey]:
+    async def _reduce_bgpsec_keys(self, bgpsec_keys: list[BGPSecKey]) -> dict[str, BGPSecKey]:
         """
         Reduces a list of BGPSec Keys into a dict of unique and valid BGPSec Keys.
 
@@ -251,6 +253,7 @@ class RPKIClient(Datasource):
                 continue
             key = f'{bgpsec_key["asn"]}|{bgpsec_key["ski"]}|{bgpsec_key["pubkey"]}'
             reduced_bgpsec_keys[key] = bgpsec_key
+            await asyncio.sleep(0)
 
         return reduced_bgpsec_keys
 
@@ -287,12 +290,12 @@ class RPKIClient(Datasource):
             match self.version:
                 case 0:
                     # Parse ROAs and do not parse BGPSec Keys
-                    roas = self._reduce_roas(json_content["roas"])
+                    roas = await self._reduce_roas(json_content["roas"])
                 case 1:
                     # Parse ROAs
-                    roas = self._reduce_roas(json_content["roas"])
+                    roas = await self._reduce_roas(json_content["roas"])
                     # Parse BGPSec Keys
-                    bgpsec_keys = self._reduce_bgpsec_keys(json_content["bgpsec_keys"])
+                    bgpsec_keys = await self._reduce_bgpsec_keys(json_content["bgpsec_keys"])
                 case _:
                     raise ValueError(f"Unsupported version number: {self.version}")
 
@@ -314,18 +317,19 @@ class RPKIClient(Datasource):
             )
         )
 
-        vrps: list[bytes] = [
-            self.serialize_prefix(roa["prefix"], roa["asn"], roa["maxLength"], 1)
-            for roa in roas.values()
-        ]
-        router_keys: list[bytes] = [
-            self.serialize_router_key(bgpsec_key["asn"], ski, pubkey, 1)
-            for bgpsec_key in bgpsec_keys.values()
+        vrps: list[bytes] = []
+        for roa in roas.values():
+            vrps.append(self.serialize_prefix(roa["prefix"], roa["asn"], roa["maxLength"], 1))
+            await asyncio.sleep(0)
+
+        router_keys: list[bytes] = []
+        for bgpsec_key in bgpsec_keys.values():
             # This is not stated anywhere in the rpki-client docs
-            if (ski := base64.b16decode(bgpsec_key["ski"], casefold=True))
+            ski = base64.b16decode(bgpsec_key["ski"], casefold=True)
             # This is not stated anywhere in the rpki-client docs
-            if (pubkey := base64.b64decode(bgpsec_key["pubkey"]))
-        ]
+            pubkey = base64.b64decode(bgpsec_key["pubkey"])
+            router_keys.append(self.serialize_router_key(bgpsec_key["asn"], ski, pubkey, 1))
+            await asyncio.sleep(0)
 
         return {
             "content": json_content,
