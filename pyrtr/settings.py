@@ -20,6 +20,7 @@ class LogLevelEnums(str, Enum):
     INFO = "INFO"
     DEBUG = "DEBUG"  # NOSONAR
 
+
 class DatasourceEnums(str, Enum):
     """
     Supported Datasources
@@ -27,6 +28,7 @@ class DatasourceEnums(str, Enum):
 
     PYRTR = "PYRTR"
     RPKICLIENT = "RPKICLIENT"
+
 
 class Settings(BaseSettings):
     """Application settings parser"""

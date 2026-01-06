@@ -363,7 +363,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
             }
         case _:
             raise ValueError(f"Unsupported datasource: {datasource}")
-        
+
     sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
@@ -385,7 +385,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
 
     if http_port is not None:
         coroutines.append(
-            http_server(host, http_port, sessions, datasource_instances, cache_registry)  
+            http_server(host, http_port, sessions, datasource_instances, cache_registry)
         )
 
     await asyncio.gather(*coroutines)

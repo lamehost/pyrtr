@@ -112,7 +112,7 @@ class Datasource(ABC):
             if data["timestamp"] > datetime.now(timezone.utc).timestamp() - self.expire
         }
 
-    async def dump(self) -> bytes: # NOSONAR
+    async def dump(self) -> bytes:  # NOSONAR
         """
         Dumps the content of self.copies to Msgpack
 
