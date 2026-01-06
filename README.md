@@ -33,7 +33,7 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 | PYRTR_HOST |  Host to bind the RTR and HTTP servers to | localhost |
 | PYRTR_RTR_PORT |  Port to bind the RTR server to. Use False to disable the Cache | 8323 |
 | PYRTR_HTTP_PORT | Port to bind the HTTP server to. Use False to disable the HTTP server | 8080 |
-| PYRTR_DATASOURCE | Datasource type to use | RPKICLIENT |
+| PYRTR_DATASOURCE | Datasource type to use (see below) | RPKICLIENT |
 | PYRTR_LOCATION |  Path to the RPKI-client JSON file | json |
 | PYRTR_RELOAD | The amount of seconds after which the RPKIclient JSON file is realoaded | 900 |
 | PYRTR_REFRESH |  RTR Refresh Interval in seconds * | 3600 |
@@ -41,6 +41,14 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 | PYRTR_EXPIRE |  RTR Expire Interval in seconds * | 7200 |
 
 \* See https://datatracker.ietf.org/doc/html/rfc8210#section-6
+
+## Datasources
+pyRTR is designed to support multiple Datasources. The following is a list of those that are currently supported
+
+### RPKI Client
+Loads the RPKI Client JSON file.  
+**Name**: RPKICLIENT  
+**Location**: Can be either local path or HTTP URL
 
 ## HTTP endpoints
 The following HTTP endpoints are available at HTTP port 8080:

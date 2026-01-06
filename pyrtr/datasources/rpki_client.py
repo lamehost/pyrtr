@@ -7,8 +7,10 @@ import os
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from typing import TypedDict
+from urllib.parse import urlparse
 
 import aiofiles
+import aiohttp
 import orjson
 from typing_extensions import override
 
@@ -257,6 +259,24 @@ class RPKIClient(Datasource):
 
         return reduced_bgpsec_keys
 
+    async def _read_file(self) -> bytes:
+        """
+        Reads the JSON file either locally or remotely if self.location is a URL
+
+        Returns:
+        --------
+        bytes: The content of the JSON file
+        """
+        try:
+            # Test if the `location` is a URL
+            urlparse(self.location)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.location) as response:
+                    return (await response.text()).encode("utf-8")
+        except ValueError:
+            async with aiofiles.open(self.location, mode="rb") as file:
+                return await file.read()
+
     @override
     async def parse(self) -> Data:
         """
@@ -266,8 +286,7 @@ class RPKIClient(Datasource):
         --------
         JSON: The JSON file
         """
-        async with aiofiles.open(self.location, mode="rb") as file:
-            data: bytes = await file.read()
+        data: bytes = await self._read_file()
 
         # This is not JSONContent yet, it will be after we convert ROAs, BGPSec Keys and ASPAS to
         # dictionaries
