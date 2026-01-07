@@ -31,13 +31,19 @@ service:
     port: 8080
 
 ingress:
-  enabled: false
+  enabled: true
   className: ""
   annotations: {}
   hosts:
     - host: pyrtr.local
       paths:
-        - path: /
+        - path: /healthz
+          pathType: ImplementationSpecific
+        - path: /clients
+          pathType: ImplementationSpecific
+        - path: /prometheus
+          pathType: ImplementationSpecific
+        - path: /dump
           pathType: ImplementationSpecific
   tls: []
 
@@ -67,3 +73,5 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+env: []
