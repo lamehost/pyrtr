@@ -112,6 +112,11 @@ class Datasource(ABC):
             if data["timestamp"] > datetime.now(timezone.utc).timestamp() - self.expire
         }
 
+        if not self.copies:
+            # If there are no copies, then there is no data to send to the clients
+            self.vrps = []
+            self.router_keys = []
+
     async def dump(self) -> bytes:  # NOSONAR
         """
         Dumps the content of self.copies to Msgpack
