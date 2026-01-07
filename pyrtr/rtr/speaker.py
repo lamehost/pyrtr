@@ -418,7 +418,7 @@ class Speaker(asyncio.Protocol, ABC):
             # Handle the PDU
             self.handle_pdu(header, data)
         except PDUError as error:
-            if self.version:
+            if self.version is not None:
                 # If the version happned AFTER version was negotaited
                 exit_loop = self.handle_pdu_error_exception(header, error)
                 if exit_loop and self.transport is not None:
