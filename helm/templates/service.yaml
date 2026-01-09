@@ -25,7 +25,7 @@ spec:
   type: {{ .Values.service.rtr.type }}
   ports:
     - port: {{ .Values.service.rtr.port }}
-      targetPort: 323
+      targetPort: 8323
       protocol: TCP
       name: rtr
   selector:
