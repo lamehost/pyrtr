@@ -188,11 +188,11 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     if cache.remote is None:
         raise RuntimeError("Attempting to register an uninitialized cache")
 
-    if cache.transport is not None:
-        # Disabled TCP NO Delay
-        transport_socket: socket.socket = cache.transport.get_extra_info("socket")
-        if transport_socket:
-            transport_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, False)
+    # if cache.transport is not None:
+    #     # Disabled TCP NO Delay
+    #     transport_socket: socket.socket = cache.transport.get_extra_info("socket")
+    #     if transport_socket:
+    #         transport_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, False)
 
     cache_registry[cache.remote] = cache
     prometheus.clients.inc()
