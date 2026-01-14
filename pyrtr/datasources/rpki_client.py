@@ -359,6 +359,8 @@ class RPKIClient(Datasource):
         -------
         bool: True if the process completed successfully.
         """
+        logger.debug("Reloading the datasource for V%d", self.version)
+
         await self.purge()
 
         try:
