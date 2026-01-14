@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 
 import aiofiles
 import aiohttp
-import xxhash
 import orjson
+import xxhash
 from typing_extensions import override
 
 from pyrtr.datasources.datasource import Data, Datasource
