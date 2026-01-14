@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import aiofiles
 import aiohttp
+import xxhash
 import orjson
 from typing_extensions import override
 
@@ -324,17 +325,9 @@ class RPKIClient(Datasource):
         json_content["aspas"] = aspas
 
         # Calculate hash
-        json_hash: str = str(
-            hash(
-                orjson.dumps(  # pylint: disable=no-member
-                    json_content["roas"], option=orjson.OPT_SORT_KEYS  # pylint: disable=no-member
-                )
-                + orjson.dumps(  # pylint: disable=no-member
-                    json_content["bgpsec_keys"],
-                    option=orjson.OPT_SORT_KEYS,  # pylint: disable=no-member
-                )
-            )
-        )
+        json_hash: str = xxhash.xxh64(
+            "".join(roas.keys()) + "".join(bgpsec_keys.keys()) + "".join(aspas.keys())
+        ).hexdigest()
 
         vrps: list[bytes] = []
         for roa in roas.values():

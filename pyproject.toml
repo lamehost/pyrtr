@@ -36,3 +36,4 @@ prometheus-client = {git = "https://github.com/prometheus/client_python.git"}
 orjson = "^3.11.5"
 aiofiles = "^25.1.0"
 msgpack = "^1.1.2"
+xxhash = "^3.6.0"
