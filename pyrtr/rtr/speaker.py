@@ -54,7 +54,7 @@ class RTRHeader(TypedDict):
     length: int
 
 
-class Speaker(asyncio.Protocol, ABC):
+class Speaker(asyncio.BufferedProtocol, ABC):
     """
     Abstract Base Class that defines the RTR speaker
     """
@@ -76,6 +76,9 @@ class Speaker(asyncio.Protocol, ABC):
         self.connect_callback: Callable[[Self], None] | None = connect_callback
         self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
+        self.data_length: int = 0
+        self.buffer: memoryview = memoryview(bytearray(524280))
+
         self.current_serial: int = 0
         self.remote: str | None = None
         self.transport: asyncio.Transport | None = None
@@ -90,10 +93,6 @@ class Speaker(asyncio.Protocol, ABC):
         --------
         RTRHeader: The parsed RTR header
         """
-        # Read data
-        if len(data) < 8:
-            raise CorruptDataError("PDU is too short")
-
         # Parser header
         fields = struct.unpack("!BBHI", data[:8])
 
@@ -102,6 +101,28 @@ class Speaker(asyncio.Protocol, ABC):
             type=fields[1],
             length=fields[3],
         )
+
+    def negotiate_version(self, header: RTRHeader, data: bytes) -> None:
+        # Version negotiation
+        if self.version is None:
+            try:
+                self.version = SupportedVersions(header["version"]).value
+            except ValueError:
+                if self.transport is not None:
+                    self.transport.close()
+                    return
+            except KeyError as error:
+                raise UnexpectedProtocolVersionError(
+                    f"Unsupported protocol version: {header['version']}"
+                ) from error
+        else:
+            # Version changed
+            if self.version != header["version"]:
+                raise UnexpectedProtocolVersionError(
+                    f"Negotiated protocol version is {self.version},"
+                    f" received version is {header['version']}",
+                    data=data,
+                )
 
     def write(self, data: bytes) -> None:
         """
@@ -374,7 +395,10 @@ class Speaker(asyncio.Protocol, ABC):
         if self.transport is not None and not self.transport.is_closing():
             self.transport.close()
 
-    def data_received(self, data: bytes) -> None:
+    def get_buffer(self, sizehint: int) -> memoryview:
+        return self.buffer[self.data_length :]
+
+    def buffer_updated(self, nbytes: int) -> None:
         """
         Called when some data is received.
 
@@ -386,33 +410,59 @@ class Speaker(asyncio.Protocol, ABC):
         # Create empty `header` in case the PDU is too short and an error is raised
         header = None
 
+        self.data_length = self.data_length + nbytes
+        buffer_percent = round(self.data_length * 100 / len(self.buffer))
+        logger.debug(
+            "Recevied %d bytes from remote host: %s. Buffer utilization: %d%%",
+            nbytes,
+            self.remote,
+            buffer_percent,
+        )
+
         try:
-            # Read and parse the header
-            header = self.parse_header(data)
+            # Read data
+            if len(self.buffer) < 8:
+                raise CorruptDataError("PDU is too short")
 
-            # Version negotiation
-            if self.version is None:
-                try:
-                    self.version = SupportedVersions(header["version"]).value
-                except ValueError:
-                    if self.transport is not None:
-                        self.transport.close()
-                        return
-                except KeyError as error:
-                    raise UnexpectedProtocolVersionError(
-                        f"Unsupported protocol version: {header['version']}"
-                    ) from error
-            else:
-                # Version changed
-                if self.version != header["version"]:
-                    raise UnexpectedProtocolVersionError(
-                        f"Negotiated protocol version is {self.version},"
-                        f" received version is {header['version']}",
-                        data=data,
-                    )
+            offset = 0
+            while offset < self.data_length:
+                if offset + 8 > self.data_length:
+                    # There's not enough data in the buffer for the header
+                    remaining_data = self.buffer[offset : self.data_length]
+                    # Set data_length to the current remaining data
+                    self.data_length = len(remaining_data)
+                    # Move remaining data to the beginning of the buffer
+                    self.buffer[: self.data_length] = remaining_data
+                    return
 
-            # Handle the PDU
-            self.handle_pdu(header, data)
+                # Read the header
+                header_data = self.buffer[offset : offset + 8]
+                # Parse the header
+                header = self.parse_header(header_data)
+
+                if offset + header["length"] > self.data_length:
+                    # There's not enough data in the buffer for the PDU
+                    remaining_data = self.buffer[offset : self.data_length]
+                    # Set data_length to the current remaining data
+                    self.data_length = len(remaining_data)
+                    # Move remaining data to the beginning of the buffer
+                    self.buffer[: self.data_length] = remaining_data
+                    return
+
+                # Read the PDU
+                pdu_data = self.buffer[offset : offset + header["length"]]
+
+                # Negotiation version
+                self.negotiate_version(header, pdu_data)
+
+                # Handle the PDU
+                self.handle_pdu(header, pdu_data)
+
+                # Update offset
+                offset = offset + header["length"]
+
+            self.data_length = self.data_length - offset
+
         except PDUError as error:
             if self.version is not None:
                 # If the version happned AFTER version was negotaited
