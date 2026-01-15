@@ -103,6 +103,16 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         )
 
     def negotiate_version(self, header: RTRHeader, data: bytes) -> None:
+        """
+        Negotiate the version with the remote host. Raises error if version changes
+
+        Arguments:
+        ----------
+        header: RTRHeader
+            The parsed RTR header data
+        data: bytes
+            The PDU
+        """
         # Version negotiation
         if self.version is None:
             try:
@@ -396,6 +406,18 @@ class Speaker(asyncio.BufferedProtocol, ABC):
             self.transport.close()
 
     def get_buffer(self, sizehint: int) -> memoryview:
+        """
+        Returns the buffer object at the first "writable" position
+
+        Arguments:
+        ----------
+        sizehint: int
+            Ignored
+
+        Returns:
+        --------
+        memoryview: The buffer object at the first "writable" position
+        """
         return self.buffer[self.data_length :]
 
     def buffer_updated(self, nbytes: int) -> None:
@@ -404,8 +426,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
 
         Arguments:
         ----------
-        data: bytes
-            The received data
+        nbytes: int
+            The amount of bytes added to the buffer
         """
         # Create empty `header` in case the PDU is too short and an error is raised
         header = None
