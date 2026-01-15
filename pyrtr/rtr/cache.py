@@ -44,10 +44,10 @@ class Cache(Speaker):
     @override
     def __init__(  # pylint: disable=too-many-arguments
         self,
-        sessions: dict[int, int],
         *,
         connect_callback: Callable[[Self], None] | None = None,
         disconnect_callback: Callable[[Self], None] | None = None,
+        sessions: dict[int, int],
         datasources: dict[int, Datasource],
         refresh: int = 3600,
         expire: int = 600,
@@ -72,6 +72,7 @@ class Cache(Speaker):
             Expire Interval in seconds: Expire: 7200
         """
 
+        self.sessions: dict[int, int] = sessions
         self.datasources = datasources
         self.datasource: Datasource | None = None
 
@@ -79,9 +80,7 @@ class Cache(Speaker):
         self.expire = expire
         self.retry = retry
 
-        super().__init__(
-            sessions, connect_callback=connect_callback, disconnect_callback=disconnect_callback
-        )
+        super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
 
     @override
     def connection_made(self, transport: Transport) -> None:
@@ -184,6 +183,9 @@ class Cache(Speaker):
             # Most of the Class values are set here after version negotiation
             self.datasource = self.datasources[self.version]
             self.current_serial = self.datasource.serial
+
+        if self.version is not None and self.session is None:
+            self.session = self.sessions[self.version]
 
         match header["type"]:
             case serial_query.TYPE:

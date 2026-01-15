@@ -61,7 +61,6 @@ class Speaker(asyncio.Protocol, ABC):
 
     def __init__(
         self,
-        sessions: dict[int, int],
         *,
         connect_callback: Callable[[Self], None] | None = None,
         disconnect_callback: Callable[[Self], None] | None = None,
@@ -69,14 +68,11 @@ class Speaker(asyncio.Protocol, ABC):
         """
         Arguments:
         ----------
-        session: int
-            The RTR session ID
         connect_callback: Callable[[Self], None] | None = None
             The method executed after the connection is established
         disconnect_callback: Callable[[Self], None] | None = None
             The method executed after the connection is terminated
         """
-        self.sessions: dict[int, int] = sessions
         self.connect_callback: Callable[[Self], None] | None = connect_callback
         self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
@@ -387,7 +383,7 @@ class Speaker(asyncio.Protocol, ABC):
         data: bytes
             The received data
         """
-        # Create empty `data` in case the PDU is too short and an error is raised
+        # Create empty `header` in case the PDU is too short and an error is raised
         header = None
 
         try:
@@ -398,7 +394,6 @@ class Speaker(asyncio.Protocol, ABC):
             if self.version is None:
                 try:
                     self.version = SupportedVersions(header["version"]).value
-                    self.session = self.sessions[self.version]
                 except ValueError:
                     if self.transport is not None:
                         self.transport.close()
@@ -412,7 +407,8 @@ class Speaker(asyncio.Protocol, ABC):
                 if self.version != header["version"]:
                     raise UnexpectedProtocolVersionError(
                         f"Negotiated protocol version is {self.version},"
-                        f" received version is {header['version']}"
+                        f" received version is {header['version']}",
+                        data=data,
                     )
 
             # Handle the PDU
