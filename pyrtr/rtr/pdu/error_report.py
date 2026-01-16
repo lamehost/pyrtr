@@ -97,7 +97,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> ErrorRepo
         if len(buffer) > fields[3]:
             raise CorruptDataError(f"The PDU is not {fields[3]} bytes long: {len(buffer)}")
 
-        if fields[3] < 0 or fields[3] > 8:
+        if fields[2] < 0 or fields[2] > 8:
             raise CorruptDataError(f"Invalid error code: {fields[2]}")
 
     pdu: ErrorReport = {
@@ -118,7 +118,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> ErrorRepo
         remaining_buffer = remaining_buffer[pdu["pdu_length"] :]
 
     pdu["text_length"] = next(iter(struct.unpack("!I", remaining_buffer[:4])))
-    remaining_buffer = remaining_buffer[4:]
+    remaining_buffer = bytes(remaining_buffer[4:])
 
     if pdu["text_length"]:
         pdu["text"] = remaining_buffer.decode("utf-8")
