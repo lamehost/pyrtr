@@ -8,7 +8,6 @@ import logging
 import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from time import sleep
 from typing import Callable, Self, TypedDict
 from uuid import uuid4
 
@@ -391,7 +390,7 @@ class RTRSpeaker(Speaker):
 
         for batch in itertools.batched(vrps, batch_size):
             self.transport.writelines(batch)
-            sleep(0)
+
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
     def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
@@ -451,7 +450,6 @@ class RTRSpeaker(Speaker):
 
         for batch in itertools.batched(router_keys, batch_size):
             self.transport.writelines(batch)
-            sleep(0)
 
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
