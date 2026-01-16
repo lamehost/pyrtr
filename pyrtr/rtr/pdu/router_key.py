@@ -100,9 +100,9 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> RouterKey
         "type": fields[1],
         "flags": fields[2],
         "length": fields[4],
-        "ski": buffer[8:28],
-        "asn": fields[6],
-        "spki": buffer[32:],
+        "ski": bytes(buffer[8:28]),
+        "asn": fields[5],
+        "spki": bytes(buffer[32:]),
     }
 
     return pdu
