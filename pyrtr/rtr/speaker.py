@@ -390,6 +390,10 @@ class RTRSpeaker(Speaker):
 
         for batch in itertools.batched(vrps, batch_size):
             self.transport.writelines(batch)
+            buffer_size = self.transport.get_write_buffer_size()
+            low_limit, high_limit = self.transport.get_write_buffer_limits()
+            logger.debug("Buffer limits: %d/%d, size: %d", low_limit, high_limit, buffer_size)
+
 
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
@@ -450,6 +454,10 @@ class RTRSpeaker(Speaker):
 
         for batch in itertools.batched(router_keys, batch_size):
             self.transport.writelines(batch)
+
+            buffer_size = self.transport.get_write_buffer_size()
+            low_limit, high_limit = self.transport.get_write_buffer_limits()
+            logger.debug("Buffer limits: %d/%d, size: %d", low_limit, high_limit, buffer_size)
 
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
