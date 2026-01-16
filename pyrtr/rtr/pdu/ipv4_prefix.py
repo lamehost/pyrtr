@@ -99,9 +99,6 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv4Prefi
         if len(buffer) > LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
 
-        if fields[2] != 0 or fields[7] != 0:
-            raise CorruptDataError(f"Invalid pdu zero: {fields[2]}")
-
         if fields[4] not in [0, 1]:
             raise CorruptDataError(f"Invalid pdu flags: {fields[4]}")
 
