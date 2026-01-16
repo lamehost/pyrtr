@@ -38,7 +38,7 @@ class RTRHeader(TypedDict):
 
 class Cache(RTRSpeaker):
     """
-    Handles the the sequences of PDU transmissions on an RTR Cache
+    Handles the the sequences of PDU transmissions of an RTR Cache
     """
 
     @override
@@ -58,9 +58,9 @@ class Cache(RTRSpeaker):
         ----------
         session: int
             The RTR session ID
-        connect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+        connect_callback: Callable[[Self], None] | None = None
             The method executed after the connection is established
-        disconnect_callback: Callable[[Self], None] | Literal[False] = connect_callback
+        disconnect_callback:  Callable[[Self], None] | None = None
             The method executed after the connection is terminated
         datasources: dict[int, Datasource]:
             The Datasource instances
