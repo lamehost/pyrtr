@@ -22,7 +22,7 @@ class IPv4Prefix(TypedDict):
     flags: int
     prefix_length: int
     max_length: int
-    prefix: str
+    prefix: int
     asn: int
 
 
