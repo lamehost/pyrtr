@@ -22,7 +22,7 @@ class IPv6Prefix(TypedDict):
     flags: int
     prefix_length: int
     max_length: int
-    prefix: str
+    prefix: int
     asn: int
 
 
@@ -85,7 +85,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
     --------
     IPv4Prefix: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHIBBBBDI", buffer)
+    fields = struct.unpack("!BBHIBBBB8HI", buffer)
 
     if validate:
         if fields[0] != version:
@@ -112,6 +112,10 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
         if fields[6] < 0 or fields[6] > 128:
             raise CorruptDataError(f"Invalid pdu max length: {fields[6]}")
 
+    prefix_value = 0
+    for i, field in enumerate(fields[8:16]):
+        prefix_value |= field << (16 * (7 - i))
+
     pdu: IPv6Prefix = {
         "version": fields[0],
         "type": fields[1],
@@ -119,8 +123,8 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
         "flags": fields[4],
         "prefix_length": fields[5],
         "max_length": fields[6],
-        "prefix": fields[8],
-        "asn": fields[9],
+        "prefix": prefix_value,
+        "asn": fields[16],
     }
 
     return pdu
