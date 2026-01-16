@@ -238,6 +238,7 @@ class RTRSpeaker(Speaker):
     """
     Abstract Base Class that defines a RTR speaker
     """
+
     def __init__(
         self,
         *,
