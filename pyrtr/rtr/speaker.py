@@ -3,10 +3,12 @@ Implements the Abstract Base Class for the RTR speaker
 """
 
 import asyncio
+import itertools
 import logging
 import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
+from time import sleep
 from typing import Callable, Self, TypedDict
 from uuid import uuid4
 
@@ -317,7 +319,10 @@ class RTRSpeaker(Speaker):
         data: bytes
             The serialized PDU to send
         """
-        self.transport.write(data)  # pyright: ignore
+        if self.transport is None:
+            raise BrokenPipeError("Transport is not ready")
+
+        self.transport.write(data)
 
     def write_serial_notify(self) -> None:
         """
@@ -370,16 +375,23 @@ class RTRSpeaker(Speaker):
         self.write(pdu)
         logger.debug("Cache response PDU sent to %s", self.remote)
 
-    def write_vrps(self, vrps: list[bytes]) -> None:
+    def write_vrps(self, vrps: list[bytes], batch_size: int = 10000) -> None:
         """
         Writes IP prefixes to the wire
 
         Arguments:
         ----------
-        list[bytes]:
+        vrps: list[bytes]
             List of serialized VRPs
+        batch_size: int
+            Send batch size VRPs and then allow for context switch. Default: 10000
         """
-        self.transport.writelines(vrps)  # pyright: ignore
+        if self.transport is None:
+            raise BrokenPipeError("Transport is not ready")
+
+        for batch in itertools.batched(vrps, batch_size):
+            self.transport.writelines(batch)
+            sleep(0)
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
     def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
@@ -420,7 +432,7 @@ class RTRSpeaker(Speaker):
         self.write(pdu)
         logger.debug("Cache reset PDU sent to %s", self.remote)
 
-    def write_router_keys(self, router_keys: list[bytes]) -> None:
+    def write_router_keys(self, router_keys: list[bytes], batch_size: int = 10000) -> None:
         """
         Writes Router Keys to the wire
 
@@ -428,11 +440,19 @@ class RTRSpeaker(Speaker):
         ----------
         list[bytes]:
             List of serialized Router Keys
+        batch_size: int
+            Send batch size VRPs and then allow for context switch. Default: 10000
         """
         if self.version is None:
             raise InternalError("Inconsistent version state.")
 
-        self.transport.writelines(router_keys)  # pyright: ignore
+        if self.transport is None:
+            raise BrokenPipeError("Transport is not ready")
+
+        for batch in itertools.batched(router_keys, batch_size):
+            self.transport.writelines(batch)
+            sleep(0)
+
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
     def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
