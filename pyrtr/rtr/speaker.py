@@ -3,7 +3,6 @@ Implements the Abstract Base Class for the RTR speaker
 """
 
 import asyncio
-import itertools
 import logging
 import struct
 from abc import ABC, abstractmethod
@@ -85,8 +84,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         self.connect_callback: Callable[[Self], None] | None = connect_callback
         self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
-        self.data_length: int = 0
-        self.buffer: memoryview = memoryview(bytearray(524280))
+        self.__data_length: int = 0
+        self.__buffer: memoryview = memoryview(bytearray(524280))
 
         self.remote: str | None = None
         self.transport: asyncio.Transport | None = None
@@ -147,7 +146,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         --------
         memoryview: The buffer object at the first "writable" position
         """
-        return self.buffer[self.data_length :]
+        return self.__buffer[self.__data_length :]
 
     def read_buffer(self, offset: int, nbytes: int) -> memoryview:
         """
@@ -164,10 +163,10 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         --------
         memoryview: The slice of data
         """
-        if offset + nbytes > self.data_length:
+        if offset + nbytes > self.__data_length:
             raise SliceSizeError("The requested buffer slice exceeds data length")
 
-        return self.buffer[offset : offset + nbytes]
+        return self.__buffer[offset : offset + nbytes]
 
     @abstractmethod
     def read_pdu(self, offset: int) -> int:
@@ -194,11 +193,11 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         offset: imt
             Where within buffer you want to shift data from
         """
-        remaining_data = self.buffer[offset : self.data_length]
+        remaining_data = self.__buffer[offset : self.__data_length]
         # Set data_length to the current remaining data
-        self.data_length = len(remaining_data)
+        self.__data_length = len(remaining_data)
         # Move remaining data to the beginning of the buffer
-        self.buffer[: self.data_length] = remaining_data
+        self.__buffer[: self.__data_length] = remaining_data
 
     def buffer_updated(self, nbytes: int) -> None:
         """
@@ -209,8 +208,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         nbytes: int
             The amount of bytes added to the buffer
         """
-        self.data_length = self.data_length + nbytes
-        buffer_percent = round(self.data_length * 100 / len(self.buffer))
+        self.__data_length = self.__data_length + nbytes
+        buffer_percent = round(self.__data_length * 100 / len(self.__buffer))
         logger.debug(
             "Recevied %d bytes from remote host: %s. Buffer utilization: %d%%",
             nbytes,
@@ -219,11 +218,11 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         )
 
         # Read data
-        if len(self.buffer) < 8:
+        if len(self.__buffer) < 8:
             raise CorruptDataError("PDU is too short")
 
         offset: int = 0
-        while offset < self.data_length:
+        while offset < self.__data_length:
             try:
                 read_data: int = self.read_pdu(offset)
                 # Update offset
@@ -232,7 +231,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
                 self.rebase_buffer(offset)
                 return
 
-        self.data_length = self.data_length - offset
+        self.__data_length = self.__data_length - offset
 
 
 class RTRSpeaker(Speaker):
@@ -374,7 +373,7 @@ class RTRSpeaker(Speaker):
         self.write(pdu)
         logger.debug("Cache response PDU sent to %s", self.remote)
 
-    def write_vrps(self, vrps: list[bytes], batch_size: int = 10000) -> None:
+    def write_vrps(self, vrps: list[bytes]) -> None:
         """
         Writes IP prefixes to the wire
 
@@ -382,18 +381,11 @@ class RTRSpeaker(Speaker):
         ----------
         vrps: list[bytes]
             List of serialized VRPs
-        batch_size: int
-            Send batch size VRPs and then allow for context switch. Default: 10000
         """
         if self.transport is None:
             raise BrokenPipeError("Transport is not ready")
 
-        for batch in itertools.batched(vrps, batch_size):
-            self.transport.writelines(batch)
-            buffer_size = self.transport.get_write_buffer_size()
-            low_limit, high_limit = self.transport.get_write_buffer_limits()
-            logger.debug("Buffer limits: %d/%d, size: %d", low_limit, high_limit, buffer_size)
-
+        self.transport.writelines(vrps)
 
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
@@ -435,7 +427,7 @@ class RTRSpeaker(Speaker):
         self.write(pdu)
         logger.debug("Cache reset PDU sent to %s", self.remote)
 
-    def write_router_keys(self, router_keys: list[bytes], batch_size: int = 10000) -> None:
+    def write_router_keys(self, router_keys: list[bytes]) -> None:
         """
         Writes Router Keys to the wire
 
@@ -443,8 +435,6 @@ class RTRSpeaker(Speaker):
         ----------
         list[bytes]:
             List of serialized Router Keys
-        batch_size: int
-            Send batch size VRPs and then allow for context switch. Default: 10000
         """
         if self.version is None:
             raise InternalError("Inconsistent version state.")
@@ -452,12 +442,7 @@ class RTRSpeaker(Speaker):
         if self.transport is None:
             raise BrokenPipeError("Transport is not ready")
 
-        for batch in itertools.batched(router_keys, batch_size):
-            self.transport.writelines(batch)
-
-            buffer_size = self.transport.get_write_buffer_size()
-            low_limit, high_limit = self.transport.get_write_buffer_limits()
-            logger.debug("Buffer limits: %d/%d, size: %d", low_limit, high_limit, buffer_size)
+        self.transport.writelines(router_keys)
 
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
@@ -588,7 +573,7 @@ class RTRSpeaker(Speaker):
             header = self.parse_header(header_data)
 
             # Read the PDU
-            pdu_data = self.buffer[offset : offset + header["length"]]
+            pdu_data = self.read_buffer(offset, header["length"])
 
             # Negotiation version
             self.negotiate_version(header, pdu_data)
