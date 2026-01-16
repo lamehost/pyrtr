@@ -9,7 +9,7 @@ from typing import Callable, Self, TypedDict
 from typing_extensions import override
 
 from pyrtr.datasources import Datasource
-from pyrtr.rtr.speaker import Speaker
+from pyrtr.rtr.speaker import RTRSpeaker
 
 from .pdu import (
     error_report,
@@ -36,7 +36,7 @@ class RTRHeader(TypedDict):
     length: int
 
 
-class Cache(Speaker):
+class Cache(RTRSpeaker):
     """
     Handles the the sequences of PDU transmissions on an RTR Cache
     """

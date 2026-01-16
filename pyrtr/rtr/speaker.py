@@ -10,6 +10,8 @@ from enum import IntEnum
 from typing import Callable, Self, TypedDict
 from uuid import uuid4
 
+from typing_extensions import override
+
 from .pdu import (
     cache_reset,
     cache_response,
@@ -54,9 +56,15 @@ class RTRHeader(TypedDict):
     length: int
 
 
+class SliceSizeError(Exception):
+    """
+    Raised when Speaker attempts to read from a portion of the buffer that exceeds data_length
+    """
+
+
 class Speaker(asyncio.BufferedProtocol, ABC):
     """
-    Abstract Base Class that defines the RTR speaker
+    Abstract Base Class that defines a TCP speaker
     """
 
     def __init__(
@@ -79,9 +87,174 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         self.data_length: int = 0
         self.buffer: memoryview = memoryview(bytearray(524280))
 
-        self.current_serial: int = 0
         self.remote: str | None = None
         self.transport: asyncio.Transport | None = None
+
+    def connection_made(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, transport: asyncio.Transport
+    ) -> None:
+        """
+        Called when a connection is made.
+
+        transport: asyncio.Transport
+             Transport representing the connection.
+        """
+        # Find the remote socket data
+        try:
+            host, port = transport.get_extra_info("peername")
+            self.remote = f"{host}:{port}"
+        except TypeError:
+            # Raised using neither TCP nor UDP
+            self.remote = str(uuid4())
+
+        # Set the transport for this host
+        self.transport = transport
+
+        if self.connect_callback:
+            self.connect_callback(self)
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        """
+        Called when the connection is lost or closed.
+
+        exc: Exception | None
+            The exception that forced the connection to be closed
+        """
+        if isinstance(exc, ConnectionResetError):
+            logger.info("Connection reset by the remote host: %s", self.remote)
+
+        if isinstance(exc, BrokenPipeError):
+            logger.info("Connection died unexpectedly: %s", self.remote)
+
+        if self.disconnect_callback:
+            self.disconnect_callback(self)
+
+        # Close the writer stream
+        if self.transport is not None and not self.transport.is_closing():
+            self.transport.close()
+
+    def get_buffer(self, sizehint: int) -> memoryview:
+        """
+        Returns the buffer object at the first "writable" position
+
+        Arguments:
+        ----------
+        sizehint: int
+            Ignored
+
+        Returns:
+        --------
+        memoryview: The buffer object at the first "writable" position
+        """
+        return self.buffer[self.data_length :]
+
+    def read_buffer(self, offset: int, nbytes: int) -> memoryview:
+        """
+        Reads slice of data from the buffer
+
+        Arguments:
+        ----------
+        offset: int
+            Where within the buffer to read data from
+        nbytes: int
+            How many bytes to read
+
+        Returns:
+        --------
+        memoryview: The slice of data
+        """
+        if offset + nbytes > self.data_length:
+            raise SliceSizeError("The requested buffer slice exceeds data length")
+
+        return self.buffer[offset : offset + nbytes]
+
+    @abstractmethod
+    def read_pdu(self, offset: int) -> int:
+        """
+        Reads PDU from the buffer
+
+        Arguments:
+        ----------
+        offset: int
+            Where to read the PDU from within the buffer
+
+        Returns:
+        --------
+        int: The amount of buffer read
+        """
+        raise NotImplementedError
+
+    def rebase_buffer(self, offset: int) -> None:
+        """
+        Shifts data at offset at the start of the buffer and resets data_length
+
+        Arguments:
+        ----------
+        offset: imt
+            Where within buffer you want to shift data from
+        """
+        remaining_data = self.buffer[offset : self.data_length]
+        # Set data_length to the current remaining data
+        self.data_length = len(remaining_data)
+        # Move remaining data to the beginning of the buffer
+        self.buffer[: self.data_length] = remaining_data
+
+    def buffer_updated(self, nbytes: int) -> None:
+        """
+        Called when some data is received.
+
+        Arguments:
+        ----------
+        nbytes: int
+            The amount of bytes added to the buffer
+        """
+        self.data_length = self.data_length + nbytes
+        buffer_percent = round(self.data_length * 100 / len(self.buffer))
+        logger.debug(
+            "Recevied %d bytes from remote host: %s. Buffer utilization: %d%%",
+            nbytes,
+            self.remote,
+            buffer_percent,
+        )
+
+        # Read data
+        if len(self.buffer) < 8:
+            raise CorruptDataError("PDU is too short")
+
+        offset: int = 0
+        while offset < self.data_length:
+            try:
+                read_data: int = self.read_pdu(offset)
+                # Update offset
+                offset = offset + read_data
+            except SliceSizeError:
+                self.rebase_buffer(offset)
+                return
+
+        self.data_length = self.data_length - offset
+
+
+class RTRSpeaker(Speaker):
+    """
+    Abstract Base Class that defines a RTR speaker
+    """
+    def __init__(
+        self,
+        *,
+        connect_callback: Callable[[Self], None] | None = None,
+        disconnect_callback: Callable[[Self], None] | None = None,
+    ):
+        """
+        Arguments:
+        ----------
+        connect_callback: Callable[[Self], None] | None = None
+            The method executed after the connection is established
+        disconnect_callback: Callable[[Self], None] | None = None
+            The method executed after the connection is terminated
+        """
+        super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
+
+        self.current_serial: int = 0
         self.session: int | None = None
         self.version: int | None = None
 
@@ -362,135 +535,47 @@ class Speaker(asyncio.BufferedProtocol, ABC):
 
         return error.fatal
 
-    def connection_made(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, transport: asyncio.Transport
-    ) -> None:
+    @override
+    def read_pdu(self, offset: int) -> int:
         """
-        Called when a connection is made.
-
-        transport: asyncio.Transport
-             Transport representing the connection.
-        """
-        # Find the remote socket data
-        try:
-            host, port = transport.get_extra_info("peername")
-            self.remote = f"{host}:{port}"
-        except TypeError:
-            # Raised using neither TCP nor UDP
-            self.remote = str(uuid4())
-
-        # Set the transport for this host
-        self.transport = transport
-
-        if self.connect_callback:
-            self.connect_callback(self)
-
-    def connection_lost(self, exc: Exception | None) -> None:
-        """
-        Called when the connection is lost or closed.
-
-        exc: Exception | None
-            The exception that forced the connection to be closed
-        """
-        if isinstance(exc, ConnectionResetError):
-            logger.info("Connection reset by the remote host: %s", self.remote)
-
-        if isinstance(exc, BrokenPipeError):
-            logger.info("Connection died unexpectedly: %s", self.remote)
-
-        if self.disconnect_callback:
-            self.disconnect_callback(self)
-
-        # Close the writer stream
-        if self.transport is not None and not self.transport.is_closing():
-            self.transport.close()
-
-    def get_buffer(self, sizehint: int) -> memoryview:
-        """
-        Returns the buffer object at the first "writable" position
+        Reads PDU from the buffer
 
         Arguments:
         ----------
-        sizehint: int
-            Ignored
+        offset: int
+            Where to read the PDU from within the buffer
 
         Returns:
         --------
-        memoryview: The buffer object at the first "writable" position
-        """
-        return self.buffer[self.data_length :]
-
-    def buffer_updated(self, nbytes: int) -> None:
-        """
-        Called when some data is received.
-
-        Arguments:
-        ----------
-        nbytes: int
-            The amount of bytes added to the buffer
+        int: The amount of buffer read
         """
         # Create empty `header` in case the PDU is too short and an error is raised
         header = None
-
-        self.data_length = self.data_length + nbytes
-        buffer_percent = round(self.data_length * 100 / len(self.buffer))
-        logger.debug(
-            "Recevied %d bytes from remote host: %s. Buffer utilization: %d%%",
-            nbytes,
-            self.remote,
-            buffer_percent,
-        )
+        pdu_data = bytes()
 
         try:
-            # Read data
-            if len(self.buffer) < 8:
-                raise CorruptDataError("PDU is too short")
+            # Read the header
+            header_data = self.read_buffer(offset, 8)
 
-            offset = 0
-            while offset < self.data_length:
-                if offset + 8 > self.data_length:
-                    # There's not enough data in the buffer for the header
-                    remaining_data = self.buffer[offset : self.data_length]
-                    # Set data_length to the current remaining data
-                    self.data_length = len(remaining_data)
-                    # Move remaining data to the beginning of the buffer
-                    self.buffer[: self.data_length] = remaining_data
-                    return
+            # Parse the header
+            header = self.parse_header(header_data)
 
-                # Read the header
-                header_data = self.buffer[offset : offset + 8]
-                # Parse the header
-                header = self.parse_header(header_data)
+            # Read the PDU
+            pdu_data = self.buffer[offset : offset + header["length"]]
 
-                if offset + header["length"] > self.data_length:
-                    # There's not enough data in the buffer for the PDU
-                    remaining_data = self.buffer[offset : self.data_length]
-                    # Set data_length to the current remaining data
-                    self.data_length = len(remaining_data)
-                    # Move remaining data to the beginning of the buffer
-                    self.buffer[: self.data_length] = remaining_data
-                    return
+            # Negotiation version
+            self.negotiate_version(header, pdu_data)
 
-                # Read the PDU
-                pdu_data = self.buffer[offset : offset + header["length"]]
-
-                # Negotiation version
-                self.negotiate_version(header, pdu_data)
-
-                # Handle the PDU
-                self.handle_pdu(header, pdu_data)
-
-                # Update offset
-                offset = offset + header["length"]
-
-            self.data_length = self.data_length - offset
-
+            # Handle the PDU
+            self.handle_pdu(header, pdu_data)
         except PDUError as error:
             if self.version is not None:
-                # If the version happned AFTER version was negotaited
+                # If the version happend AFTER version was negotaited
                 exit_loop = self.handle_pdu_error_exception(header, error)
                 if exit_loop and self.transport is not None:
                     self.transport.close()
             elif self.transport:
                 # If the error happened BEFORE version was negotiated
                 self.transport.close()
+
+        return len(pdu_data)
