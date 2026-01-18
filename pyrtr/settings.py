@@ -2,7 +2,7 @@
 
 from enum import Enum
 from ipaddress import IPv4Address, IPv6Address
-from typing import Annotated, Literal, Self
+from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     LOGLEVEL: LogLevelEnums = LogLevelEnums.INFO
 
     HOST: IPv4Address | IPv6Address = IPv4Address("127.0.0.1")
-    RTR_PORT: Annotated[int, Field(gt=0, lt=65536)] | Literal[None] = 8323
-    HTTP_PORT: Annotated[int, Field(gt=0, lt=65536)] | Literal[None] = 8080
+    RTR_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8323
+    HTTP_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8080
     DATASOURCE: DatasourceEnums = DatasourceEnums.RPKICLIENT
     LOCATION: str = "json"
     RELOAD: Annotated[int, Field(gt=29, lt=3601)] = 900

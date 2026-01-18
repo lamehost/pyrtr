@@ -5,8 +5,7 @@ import functools
 import logging
 import os
 import random
-import socket
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 from aiohttp import web
 from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp_handler
@@ -188,12 +187,6 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     if cache.remote is None:
         raise RuntimeError("Attempting to register an uninitialized cache")
 
-    if cache.transport is not None:
-        # Disabled TCP NO Delay
-        transport_socket: socket.socket = cache.transport.get_extra_info("socket")
-        if transport_socket:
-            transport_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, False)
-
     cache_registry[cache.remote] = cache
     prometheus.clients.inc()
     logger.info("Registered cache instance: %s", cache.remote)
@@ -330,8 +323,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
 
 async def run_cache(  # pylint: disable=too-many-arguments
     host: str,
-    rtr_port: int | Literal[None],
-    http_port: int | Literal[None],
+    rtr_port: int,
+    http_port: int,
     datasource: str,
     location: str,
     reload: int,
@@ -377,7 +370,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
 
     coroutines = [data_reloader(datasource_instances, cache_registry, reload)]
 
-    if rtr_port is not None:
+    if rtr_port > 0:
         coroutines.append(
             rtr_server(
                 host,
@@ -391,7 +384,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
             )
         )
 
-    if http_port is not None:
+    if http_port > 0:
         coroutines.append(
             http_server(host, http_port, sessions, datasource_instances, cache_registry)
         )

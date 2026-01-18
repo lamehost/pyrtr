@@ -4,6 +4,7 @@ Implements the Abstract Base Class for the RTR speaker
 
 import asyncio
 import logging
+import socket
 import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
@@ -89,6 +90,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
 
         self.remote: str | None = None
         self.transport: asyncio.Transport | None = None
+        self.transport_socket: socket.socket | None = None
 
     def connection_made(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, transport: asyncio.Transport
@@ -109,6 +111,11 @@ class Speaker(asyncio.BufferedProtocol, ABC):
 
         # Set the transport for this host
         self.transport = transport
+
+        # Disable TCP NO Delay
+        self.transport_socket = self.transport.get_extra_info("socket")
+        if self.transport_socket:
+            self.transport_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, False)
 
         if self.connect_callback:
             self.connect_callback(self)
@@ -413,6 +420,7 @@ class RTRSpeaker(Speaker):
             retry=retry,
             expire=expire,
         )
+
         self.write(pdu)
         logger.debug("End of data PDU sent to %s", self.remote)
 
