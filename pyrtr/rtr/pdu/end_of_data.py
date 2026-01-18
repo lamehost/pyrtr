@@ -8,7 +8,8 @@ from typing import TypedDict
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
 TYPE = 7
-LENGTH = 24
+LENGTH_V0 = 12
+LENGTH_V1 = 24
 
 
 class EndOfDataV0(TypedDict):
@@ -102,7 +103,7 @@ def serialize_v0(
         0,
         TYPE,
         session,
-        LENGTH,
+        LENGTH_V0,
         serial,
     )
 
@@ -140,7 +141,7 @@ def serialize_v1(
         1,
         TYPE,
         session,
-        LENGTH,
+        LENGTH_V1,
         serial,
         refresh,
         retry,
@@ -174,11 +175,11 @@ def unserialize_v0(buffer: bytes, validate: bool = True) -> EndOfDataV0:
         if fields[1] != TYPE:
             raise TypeError("Not a valid End of Data PDU.")
 
-        if fields[3] != LENGTH:
+        if fields[3] != LENGTH_V0:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH:
-            raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
+        if len(buffer) > LENGTH_V0:
+            raise CorruptDataError(f"The PDU is not {LENGTH_V0} bytes long: {len(buffer)}")
 
         if fields[2] < 0 or fields[2] > 65535:
             raise CorruptDataError(f"Invalid session ID: {fields[2]}")
@@ -221,11 +222,11 @@ def unserialize_v1(buffer: bytes, validate: bool = True) -> EndOfDataV1:
         if fields[1] != TYPE:
             raise TypeError("Not a valid End of Data PDU.")
 
-        if fields[3] != LENGTH:
+        if fields[3] != LENGTH_V1:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH:
-            raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
+        if len(buffer) > LENGTH_V1:
+            raise CorruptDataError(f"The PDU is not {LENGTH_V1} bytes long: {len(buffer)}")
 
         if fields[2] < 0 or fields[2] > 65535:
             raise CorruptDataError(f"Invalid session ID: {fields[2]}")
