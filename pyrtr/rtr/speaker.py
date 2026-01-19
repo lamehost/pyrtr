@@ -85,8 +85,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         self.connect_callback: Callable[[Self], None] | None = connect_callback
         self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
-        self.__data_length: int = 0
-        self.__buffer: memoryview = memoryview(bytearray(524280))
+        self._data_length: int = 0
+        self._buffer: memoryview = memoryview(bytearray(524_288))
 
         self.remote: str | None = None
         self.transport: asyncio.Transport | None = None
@@ -112,7 +112,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         # Set the transport for this host
         self.transport = transport
 
-        # Disable TCP NO Delay
+        # Enable Nagle's algorithm (set TCP_NODELAY=False) to coalesce small writes into larger TCP
+        # segments, improving throughput at the cost of increased latency for small messages.
         self.transport_socket = self.transport.get_extra_info("socket")
         if self.transport_socket:
             self.transport_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, False)
@@ -153,7 +154,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         --------
         memoryview: The buffer object at the first "writable" position
         """
-        return self.__buffer[self.__data_length :]
+        return self._buffer[self._data_length :]
 
     def read_buffer(self, offset: int, nbytes: int) -> memoryview:
         """
@@ -170,10 +171,10 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         --------
         memoryview: The slice of data
         """
-        if offset + nbytes > self.__data_length:
+        if offset + nbytes > self._data_length:
             raise SliceSizeError("The requested buffer slice exceeds data length")
 
-        return self.__buffer[offset : offset + nbytes]
+        return self._buffer[offset : offset + nbytes]
 
     @abstractmethod
     def read_pdu(self, offset: int) -> int:
@@ -200,11 +201,11 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         offset: imt
             Where within buffer you want to shift data from
         """
-        remaining_data = self.__buffer[offset : self.__data_length]
+        remaining_data = self._buffer[offset : self._data_length]
         # Set data_length to the current remaining data
-        self.__data_length = len(remaining_data)
+        self._data_length = len(remaining_data)
         # Move remaining data to the beginning of the buffer
-        self.__buffer[: self.__data_length] = remaining_data
+        self._buffer[: self._data_length] = remaining_data
 
     def buffer_updated(self, nbytes: int) -> None:
         """
@@ -215,8 +216,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         nbytes: int
             The amount of bytes added to the buffer
         """
-        self.__data_length = self.__data_length + nbytes
-        buffer_percent = round(self.__data_length * 100 / len(self.__buffer))
+        self._data_length = self._data_length + nbytes
+        buffer_percent = round(self._data_length * 100 / len(self._buffer))
         logger.debug(
             "Recevied %d bytes from remote host: %s. Buffer utilization: %d%%",
             nbytes,
@@ -225,11 +226,11 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         )
 
         # Read data
-        if len(self.__buffer) < 8:
+        if self._data_length < 8:
             raise CorruptDataError("PDU is too short")
 
         offset: int = 0
-        while offset < self.__data_length:
+        while offset < self._data_length:
             try:
                 read_data: int = self.read_pdu(offset)
                 # Update offset
@@ -238,7 +239,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
                 self.rebase_buffer(offset)
                 return
 
-        self.__data_length = self.__data_length - offset
+        self._data_length = self._data_length - offset
 
 
 class RTRSpeaker(Speaker):
@@ -300,6 +301,7 @@ class RTRSpeaker(Speaker):
                 self.version = SupportedVersions(header["version"]).value
             except ValueError:
                 if self.transport is not None:
+                    # Silently close transport if version negotiation fails.
                     self.transport.close()
                     return
             except KeyError as error:
