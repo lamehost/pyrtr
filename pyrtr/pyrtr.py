@@ -153,7 +153,14 @@ async def datasource_reloader(
                 len(datasource.router_keys),
             )
 
-            for cache in cache_registry.values():
+            cache_ids = list(cache_registry)
+            for cache_id in cache_ids:
+                try:
+                    # cache_registry might change outside the function while we iterate through it
+                    cache = cache_registry[cache_id]
+                except KeyError:
+                    continue
+
                 if datasource.version != cache.version:
                     continue
 
