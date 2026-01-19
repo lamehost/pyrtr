@@ -117,7 +117,7 @@ async def http_server(
         await asyncio.sleep(60)
 
 
-async def data_reloader(
+async def datasource_reloader(
     datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
     sleep: int = 900,
@@ -143,7 +143,7 @@ async def data_reloader(
                 # Load new entries
                 await datasource.reload()
             except Exception as error:  # pylint: disable=broad-exception-caught
-                logger.error("Unable to reload the data source: %s", error)
+                logger.exception("Unable to reload the data source: %s", error, exc_info=True)
                 continue
 
             logger.info(
@@ -224,7 +224,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     refresh: int = 3600,
     retry: int = 600,
     expire: int = 7200,
-):
+) -> None:
     """
     Starts a local async RTR server and binds it to the specified host and port
 
@@ -270,8 +270,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
             "RTR Cache listening at %s:%d. V0 Session: %d. V1 Session: %d",
             host,
             port,
-            sessions[0],
-            sessions[1],
+            sessions.get(0),
+            sessions.get(1),
         )
         # Start the server
         await server.serve_forever()
@@ -290,7 +290,8 @@ async def run_cache(  # pylint: disable=too-many-arguments
     expire: int = 7200,
 ) -> None:
     """
-    Reloads the content of the RPKI JSON output every half `refresh`, and starts the RTR server.
+    Reloads the content of the RPKI datasource output every half `refresh`, and starts the RTR
+    server.
 
     Arguments:
     ----------
@@ -300,8 +301,8 @@ async def run_cache(  # pylint: disable=too-many-arguments
         The TCP port to bind the RTR Cache to
     http_port: int
         The TCP port to bind the HTTP server to
-    json_file: str | os.PathLike[str]
-        The path pointing to the JSON file
+    location: str | os.PathLike[str]
+        The path pointing to the datasource file
     reload: int
         The Interval after which RPKIClient is reloaded
     refresh: int
@@ -324,7 +325,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
     sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
-    coroutines = [data_reloader(datasource_instances, cache_registry, reload)]
+    coroutines = [datasource_reloader(datasource_instances, cache_registry, reload)]
 
     if rtr_port > 0:
         coroutines.append(
