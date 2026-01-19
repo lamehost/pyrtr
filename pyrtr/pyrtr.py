@@ -214,51 +214,6 @@ def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
         logger.error("Attempted to unregister a non existing cache client: %s", cache.remote)
 
 
-def create_cache_instance(  # pylint: disable=too-many-arguments
-    sessions: dict[int, int],
-    datasources: dict[int, Datasource],
-    cache_registry: dict[str, Cache],
-    *,
-    refresh: int = 3600,
-    retry: int = 600,
-    expire: int = 7200,
-) -> Cache:
-    """
-    Creates a Cache instance that registers itself to the registry
-
-    Arguments:
-    ----------
-    sessions: dict[int, int]
-        The session IDs (one per version)
-    datasources: dict[int, Datasource]
-        Datasource instances (one per version)
-    cache_registry: dict[str, Cache]
-        The Cache registry
-    refresh: int
-        Refresh Interval in seconds. Default: 3600
-    retry: int
-        Retry Interval in seconds. Default: 600
-    expire: int
-        Expire Interval in seconds: Expire: 7200
-
-    Returns:
-    --------
-    Cache: The cache instance
-    """
-
-    cache = Cache(
-        connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
-        disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
-        sessions=sessions,
-        datasources=datasources,
-        refresh=refresh,
-        retry=retry,
-        expire=expire,
-    )
-
-    return cache
-
-
 async def rtr_server(  # pylint: disable=too-many-arguments
     host: str,
     port: int,
@@ -296,10 +251,11 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     loop = asyncio.get_running_loop()
 
     server = await loop.create_server(
-        lambda: create_cache_instance(
-            sessions,
-            datasources,
-            cache_registry,
+        lambda: Cache(
+            connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
+            disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
+            sessions=sessions,
+            datasources=datasources,
             refresh=refresh,
             retry=retry,
             expire=expire,
