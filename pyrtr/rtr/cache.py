@@ -26,7 +26,7 @@ from .pdu.errors import (
 logger = logging.getLogger(__name__)
 
 
-class RTRHeader(TypedDict):
+class RTRHeader(TypedDict, total=True):
     """
     Fixed fields present in every RTR PDU that are required to identify the PDU type.
     """
@@ -50,8 +50,8 @@ class Cache(RTRSpeaker):
         sessions: dict[int, int],
         datasources: dict[int, Datasource],
         refresh: int = 3600,
-        expire: int = 600,
-        retry: int = 7200,
+        retry: int = 600,
+        expire: int = 7200,
     ):
         """
         Arguments:
