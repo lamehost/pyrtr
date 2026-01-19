@@ -327,7 +327,7 @@ class RTRSpeaker(Speaker):
             The serialized PDU to send
         """
         if self.transport is None:
-            raise BrokenPipeError("Transport is not ready")
+            raise BrokenPipeError("Transport is not ready")  # NOSONAR
 
         self.transport.write(data)
 

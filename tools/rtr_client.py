@@ -108,7 +108,7 @@ class Client(RTRSpeaker):
             The IPv4 Prefix PDU binary data
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         prefix = ipv4_prefix.unserialize(self.version, data)
         prefix_str = str(ipaddress.IPv4Address(prefix["prefix"]))
