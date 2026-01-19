@@ -20,7 +20,7 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
-black = "^25.9.0"
+black = "^26.1.0"
 flake8 = "^7.3.0"
 isort = "^7.0.0"
 bandit = "^1.8.6"
@@ -32,7 +32,7 @@ pyrtr = "pyrtr.__main__:main"
 [tool.poetry.dependencies]
 pydantic-settings = "^2.11.0"
 aiohttp = "^3.13.2"
-prometheus-client = {git = "https://github.com/prometheus/client_python.git"}
+prometheus-client = "^0.24.1"
 orjson = "^3.11.5"
 aiofiles = "^25.1.0"
 msgpack = "^1.1.2"
