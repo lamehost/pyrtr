@@ -1,5 +1,5 @@
 """
-Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.10
+Implements https://www.ietf.org/archive/id/draft-ietf-sidrops-8210bis-23.html#name-aspa-pdu
 """
 
 import struct
@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 1
+VERSION = 11
 TYPE = 9
 # The drawing in the RFC does not relfect the true size of the PDU
 LENGTH = 123
@@ -84,7 +84,7 @@ def unserialize(buffer: bytes, validate: bool = True) -> RouterKey:
             raise CorruptDataError(f"Invalid pdu flags: {fields[2]}")
 
         if fields[4] != LENGTH:
-            raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
+            raise CorruptDataError(f"Invalid PDU length field: {fields[4]}")
 
         if len(buffer) != LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")

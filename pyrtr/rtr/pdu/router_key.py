@@ -90,7 +90,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> RouterKey
             raise CorruptDataError(f"Invalid pdu flags: {fields[2]}")
 
         if fields[4] != LENGTH:
-            raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
+            raise CorruptDataError(f"Invalid PDU length field: {fields[4]}")
 
         if len(buffer) != LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")

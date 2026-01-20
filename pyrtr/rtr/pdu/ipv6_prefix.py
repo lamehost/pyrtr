@@ -103,10 +103,10 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
         if fields[4] not in [0, 1]:
             raise CorruptDataError(f"Invalid pdu flags: {fields[4]}")
 
-        if fields[5] < 0 or fields[5] > 128:
+        if fields[5] > 128:
             raise CorruptDataError(f"Invalid pdu prefix length: {fields[5]}")
 
-        if fields[6] < 0 or fields[6] > 128:
+        if fields[6] > 128:
             raise CorruptDataError(f"Invalid pdu max length: {fields[6]}")
 
     prefix_value = 0

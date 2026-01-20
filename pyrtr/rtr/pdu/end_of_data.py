@@ -181,10 +181,10 @@ def unserialize_v0(buffer: bytes, validate: bool = True) -> EndOfDataV0:
         if len(buffer) != LENGTH_V0:
             raise CorruptDataError(f"The PDU is not {LENGTH_V0} bytes long: {len(buffer)}")
 
-        if fields[2] < 0 or fields[2] > 65535:
+        if fields[2] > 65535:
             raise CorruptDataError(f"Invalid session ID: {fields[2]}")
 
-        if fields[4] < 0 or fields[4] > 4294967295:
+        if fields[4] > 4294967295:
             raise CorruptDataError(f"Invalid serial ID: {fields[4]}")
 
     return EndOfDataV0(
@@ -225,13 +225,13 @@ def unserialize_v1(buffer: bytes, validate: bool = True) -> EndOfDataV1:
         if fields[3] != LENGTH_V1:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH_V1:
+        if len(buffer) != LENGTH_V1:
             raise CorruptDataError(f"The PDU is not {LENGTH_V1} bytes long: {len(buffer)}")
 
-        if fields[2] < 0 or fields[2] > 65535:
+        if fields[2] > 65535:
             raise CorruptDataError(f"Invalid session ID: {fields[2]}")
 
-        if fields[4] < 0 or fields[4] > 4294967295:
+        if fields[4] > 4294967295:
             raise CorruptDataError(f"Invalid serial ID: {fields[4]}")
 
         if fields[5] < 1 or fields[5] > 86400:
