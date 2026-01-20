@@ -91,7 +91,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv4Prefi
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[1] != TYPE:
-            raise TypeError("Not a valid IPv4 Prefix PDU.")
+            raise CorruptDataError("Not a valid IPv4 Prefix PDU.")
 
         if fields[3] != LENGTH:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")

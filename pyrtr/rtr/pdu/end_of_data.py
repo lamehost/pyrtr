@@ -173,7 +173,7 @@ def unserialize_v0(buffer: bytes, validate: bool = True) -> EndOfDataV0:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[1] != TYPE:
-            raise TypeError("Not a valid End of Data PDU.")
+            raise CorruptDataError("Not a valid End of Data PDU.")
 
         if fields[3] != LENGTH_V0:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
@@ -220,7 +220,7 @@ def unserialize_v1(buffer: bytes, validate: bool = True) -> EndOfDataV1:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[1] != TYPE:
-            raise TypeError("Not a valid End of Data PDU.")
+            raise CorruptDataError("Not a valid End of Data PDU.")
 
         if fields[3] != LENGTH_V1:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")

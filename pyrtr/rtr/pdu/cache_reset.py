@@ -43,7 +43,7 @@ def serialize(version: int) -> bytes:
     )
 
 
-def unserialize(buffer: bytes, validate: bool = True, *, version: int | None = None) -> CacheReset:
+def unserialize(version: int, buffer: bytes, validate: bool = True) -> CacheReset:
     """
     Unserializes the PDU
 
@@ -63,19 +63,16 @@ def unserialize(buffer: bytes, validate: bool = True, *, version: int | None = N
     fields = struct.unpack("!BBHI", buffer)
 
     if validate:
-        if version is None:
-            raise ValueError("Specify a version to perform validation")
-
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[1] != TYPE:
-            raise TypeError("Not a valid Cache Reset PDU.")
+            raise CorruptDataError("Not a valid Cache Reset PDU.")
 
         if fields[3] != LENGTH:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH:
+        if len(buffer) != LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
 
     pdu: CacheReset = {

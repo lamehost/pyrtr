@@ -67,7 +67,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> SerialNot
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[1] != TYPE:
-            raise TypeError("Not a valid Serial Notify PDU.")
+            raise CorruptDataError("Not a valid Serial Notify PDU.")
 
         if fields[3] != LENGTH:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
