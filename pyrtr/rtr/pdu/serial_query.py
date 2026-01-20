@@ -72,7 +72,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> SerialQue
         if fields[3] != LENGTH:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH:
+        if len(buffer) != LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
 
         if fields[2] < 0 or fields[2] > 65535:

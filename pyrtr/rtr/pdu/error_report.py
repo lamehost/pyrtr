@@ -94,7 +94,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> ErrorRepo
         if fields[3] > 65535:
             raise CorruptDataError(f"PDU is too long: {fields[2]}")
 
-        if len(buffer) > fields[3]:
+        if len(buffer) != fields[3]:
             raise CorruptDataError(f"The PDU is not {fields[3]} bytes long: {len(buffer)}")
 
         if fields[2] < 0 or fields[2] > 8:

@@ -178,7 +178,7 @@ def unserialize_v0(buffer: bytes, validate: bool = True) -> EndOfDataV0:
         if fields[3] != LENGTH_V0:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH_V0:
+        if len(buffer) != LENGTH_V0:
             raise CorruptDataError(f"The PDU is not {LENGTH_V0} bytes long: {len(buffer)}")
 
         if fields[2] < 0 or fields[2] > 65535:

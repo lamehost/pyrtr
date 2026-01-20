@@ -97,7 +97,7 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
         if fields[3] != LENGTH:
             raise CorruptDataError(f"Invalid PDU length field: {fields[3]}")
 
-        if len(buffer) > LENGTH:
+        if len(buffer) != LENGTH:
             raise CorruptDataError(f"The PDU is not {LENGTH} bytes long: {len(buffer)}")
 
         if fields[4] not in [0, 1]:
