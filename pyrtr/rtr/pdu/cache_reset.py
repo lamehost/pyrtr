@@ -49,6 +49,8 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> CacheRese
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     buffer: bytes
         Binary PDU data
     validate: bool
@@ -60,7 +62,10 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> CacheRese
     --------
     CacheReset: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHI", buffer)
+    try:
+        fields = struct.unpack("!BBHI", buffer)
+    except struct.error as error:
+        raise CorruptDataError("Unable to unpack the Cache Reset PDU") from error
 
     if validate:
         if fields[0] != version:

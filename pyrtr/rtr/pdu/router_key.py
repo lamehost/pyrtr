@@ -8,7 +8,7 @@ from typing import TypedDict
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
 TYPE = 9
-# The drawing in the RFC does not relfect the true size of the PDU
+# The drawing in the RFC does not reflect the true size of the PDU
 LENGTH = 123
 
 
@@ -76,8 +76,11 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> RouterKey
     --------
     RouterKey: Dictionary representing the content
     """
-    fields = struct.unpack("!BBBBI", buffer[:8])
-    fields = fields + struct.unpack("!I", buffer[28:32])
+    try:
+        fields = struct.unpack("!BBBBI", buffer[:8])
+        fields = fields + struct.unpack("!I", buffer[28:32])
+    except struct.error as error:
+        raise CorruptDataError("Unable to unpack the Router Key PDU") from error
 
     if validate:
         if fields[0] != version:

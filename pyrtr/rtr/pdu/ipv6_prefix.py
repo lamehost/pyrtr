@@ -85,7 +85,13 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
     --------
     IPv4Prefix: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHIBBBB8HI", buffer)
+    try:
+        fields = struct.unpack("!BBHIBBBB8HI", buffer)
+    except struct.error as error:
+        raise CorruptDataError("Unable to unpack the IPv6 Prefix PDU") from error
+
+    # Handle the IP network address
+    prefix_value = int.from_bytes(buffer[12:28], "big")
 
     if validate:
         if fields[0] != version:
@@ -108,10 +114,6 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefi
 
         if fields[6] > 128:
             raise CorruptDataError(f"Invalid pdu max length: {fields[6]}")
-
-    prefix_value = 0
-    for i, field in enumerate(fields[8:16]):
-        prefix_value |= field << (16 * (7 - i))
 
     pdu: IPv6Prefix = {
         "version": fields[0],

@@ -82,8 +82,11 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> ErrorRepo
     --------
     ErrorReport: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHII", buffer[:12])
-
+    try:
+        fields = struct.unpack("!BBHII", buffer[:12])
+    except struct.error as error:
+        raise CorruptDataError("Unable to unpack the Error Report PDU") from error
+    
     if validate:
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")

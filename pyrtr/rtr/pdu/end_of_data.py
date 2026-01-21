@@ -276,8 +276,14 @@ def unserialize(  # NOSONAR
     """
     match version:
         case 0:
-            return unserialize_v0(buffer, validate)
+            try:
+                return unserialize_v0(buffer, validate)
+            except struct.error as error:
+                raise CorruptDataError("Unable to unpack the End of Data PDU") from error
         case 1:
-            return unserialize_v1(buffer, validate)
+            try:
+                return unserialize_v1(buffer, validate)
+            except struct.error as error:
+                raise CorruptDataError("Unable to unpack the End od Data PDU") from error
         case _:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {version}")

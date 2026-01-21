@@ -7,9 +7,8 @@ from typing import TypedDict
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
-VERSION = 11
-TYPE = 9
-# The drawing in the RFC does not relfect the true size of the PDU
+TYPE = 11
+# The drawing in the RFC does not reflect the true size of the PDU
 LENGTH = 123
 
 
@@ -27,12 +26,14 @@ class RouterKey(TypedDict):
     spki: bytes
 
 
-def serialize(flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
+def serialize(version: int, flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
     """
     Serializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     flags: int
         1 for announcement and 0 for withdrawal
     ski: bytes
@@ -47,7 +48,7 @@ def serialize(flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
     """
     before_ski = struct.pack(
         "!BBBBI",
-        VERSION,
+        version,
         TYPE,
         flags,
         0,
@@ -58,12 +59,14 @@ def serialize(flags: int, ski: bytes, asn: int, spki: bytes) -> bytes:
     return before_ski + ski + after_ski + spki
 
 
-def unserialize(buffer: bytes, validate: bool = True) -> RouterKey:
+def unserialize(version: int, buffer: bytes, validate: bool = True) -> RouterKey:
     """
     Unserializes the PDU
 
     Arguments:
     ----------
+    version: int
+        The version identifier
     buffer: bytes
         Binary PDU data
     validate: bool
@@ -73,11 +76,14 @@ def unserialize(buffer: bytes, validate: bool = True) -> RouterKey:
     --------
     RouterKey: Dictionary representing the content
     """
-    fields = struct.unpack("!BBBBI", buffer[:8])
-    fields = fields + struct.unpack("!I", buffer[28:32])
+    try:
+        fields = struct.unpack("!BBBBI", buffer[:8])
+        fields = fields + struct.unpack("!I", buffer[28:32])
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        raise CorruptDataError("Unable to unpack the ASPA PDU") from error
 
     if validate:
-        if fields[0] != VERSION:
+        if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")
 
         if fields[2] not in [0, 1]:

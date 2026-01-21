@@ -54,8 +54,11 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> ResetQuer
     --------
     ResetQuery: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHI", buffer)
-
+    try:
+        fields = struct.unpack("!BBHI", buffer)
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        raise CorruptDataError("Unable to unpack the Reset Query PDU") from error
+    
     if validate:
         if fields[0] != version:
             raise UnsupportedProtocolVersionError(f"Unsupported protocol version: {fields[0]}")

@@ -60,7 +60,10 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> SerialNot
     --------
     ResetQuery: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHII", buffer)
+    try:
+        fields = struct.unpack("!BBHII", buffer)
+    except struct.error as error:
+        raise CorruptDataError("Unable to unpack the Serial Notify PDU") from error     
 
     if validate:
         if fields[0] != version:

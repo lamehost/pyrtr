@@ -63,7 +63,10 @@ def unserialize(version: int, buffer: bytes, validate: bool = True) -> CacheResp
     --------
     CacheResponse: Dictionary representing the content
     """
-    fields = struct.unpack("!BBHI", buffer)
+    try:
+        fields = struct.unpack("!BBHI", buffer)
+    except struct.error as error:
+        raise CorruptDataError("Unable to unpack the Cache Response PDU") from error
 
     if validate:
         if fields[0] != version:
