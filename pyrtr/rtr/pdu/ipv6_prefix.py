@@ -68,7 +68,7 @@ def serialize(  # pylint: disable=too-many-arguments, too-many-positional-argume
     return before_prefix + prefix + after_prefix
 
 
-def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefix:
+def unserialize(version: int, buffer: bytes, validate: bool = True) -> IPv6Prefix:  # NOSONAR
     """
     Unserializes the PDU
 
