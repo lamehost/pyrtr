@@ -35,7 +35,7 @@ ingress:
   className: ""
   annotations: {}
   hosts:
-    - host: pyrtr.local
+    - host: pyrtr.private
       paths:
         - path: /healthz
           pathType: ImplementationSpecific
@@ -75,5 +75,5 @@ tolerations: []
 affinity: {}
 
 env: 
-  - name: PYRTR_HOST
+  - name: HOST
     value: 0.0.0.0

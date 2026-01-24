@@ -5,7 +5,7 @@ from ipaddress import IPv4Address, IPv6Address
 from typing import Annotated, Self
 
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 
 
 class LogLevelEnums(str, Enum):
@@ -46,8 +46,6 @@ class Settings(BaseSettings):
     REFRESH: Annotated[int, Field(gt=59, lt=86401)] = 3600
     RETRY: Annotated[int, Field(gt=59, lt=7201)] = 600
     EXPIRE: Annotated[int, Field(gt=599, lt=172801)] = 7200
-
-    model_config = SettingsConfigDict(env_prefix="PYRTR_")
 
     @model_validator(mode="after")
     def validate_timers(self) -> Self:

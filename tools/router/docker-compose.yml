@@ -2,8 +2,8 @@ services:
   frr:
     image: frrouting/frr:v8.4.0
     environment:
-      - PYRTR_HOST=${PYRTR_HOST}
-      - PYRTR_PORT=${PYRTR_PORT}
+      - HOST=${HOST}
+      - PORT=${PORT}
     volumes:
       - ./bgpd.conf.template:/bgpd.conf.template:ro
       - ./start.sh:/start.sh:ro
