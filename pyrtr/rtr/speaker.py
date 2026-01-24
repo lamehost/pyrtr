@@ -227,7 +227,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
 
         # Read data
         if self._data_length < 8:
-            raise CorruptDataError("PDU is too short")
+            return
 
         offset: int = 0
         while offset < self._data_length:
