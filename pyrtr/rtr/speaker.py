@@ -226,9 +226,6 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         )
 
         # Read data
-        if self._data_length < 8:
-            return
-
         offset: int = 0
         while offset < self._data_length:
             try:
