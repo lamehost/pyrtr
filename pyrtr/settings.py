@@ -2,6 +2,7 @@
 
 from enum import Enum
 from ipaddress import IPv4Address, IPv6Address
+from os import PathLike
 from typing import Annotated, Self
 
 from pydantic import Field, model_validator
@@ -39,7 +40,8 @@ class Settings(BaseSettings):
     RTR_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8323
     HTTP_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8080
     DATASOURCE: DatasourceEnums = DatasourceEnums.RPKICLIENT
-    LOCATION: str = "json"
+    DATA_LOCATION: str = "json"
+    CACHE_LOCATION: str | PathLike[str] = "./cache"
     RELOAD: Annotated[int, Field(gt=29, lt=3601)] = 900
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6

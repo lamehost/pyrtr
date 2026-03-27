@@ -120,8 +120,8 @@ class Cache(RTRSpeaker):
 
         serial = int(pdu["serial"])
         try:
-            vrps = self.datasource.copies[serial]["diffs"]["vrps"]
-            router_keys = self.datasource.copies[serial]["diffs"]["router_keys"]
+            vrps = self.datasource.snapshots[serial]["diffs"]["vrps"]
+            router_keys = self.datasource.snapshots[serial]["diffs"]["router_keys"]
         except KeyError:
             # Send Cache Reset in case the serial doesn't exist anymore
             self.write_cache_reset()
@@ -129,7 +129,8 @@ class Cache(RTRSpeaker):
 
         self.write_cache_response()
         self.write_vrps(vrps=vrps)
-        self.write_router_keys(router_keys=router_keys)
+        if self.version >= 1:
+            self.write_router_keys(router_keys=router_keys)
 
         self.write_end_of_data(
             refresh=self.refresh,
@@ -158,7 +159,6 @@ class Cache(RTRSpeaker):
             raise NoDataAvailableError("No data available yet")
 
         self.write_cache_response()
-
         self.write_vrps(vrps=self.datasource.vrps)
         if self.version >= 1:
             self.write_router_keys(router_keys=self.datasource.router_keys)

@@ -69,11 +69,6 @@ async def http_server(
         ]
         return web.json_response(clients)
 
-    async def get_copies(request: web.Request) -> web.Response:  # NOSONAR
-        version = int(request.match_info["version"])
-        dump = await datasources[version].dump()
-        return web.Response(body=dump, content_type="application/octet-stream")
-
     async def get_health(_: web.Request) -> web.Response:  # NOSONAR
         try:
             v0_last_update = datasources[0].last_update
@@ -104,7 +99,6 @@ async def http_server(
     webapp.router.add_get("/clients", get_clients, allow_head=True)
     webapp.router.add_get("/healthz", get_health, allow_head=True)
     webapp.router.add_get("/metrics", prometheus_aiohttp_handler(), allow_head=True)
-    webapp.router.add_get(r"/copies/{version:\d+}", get_copies, allow_head=True)
 
     runner = web.AppRunner(webapp)
     await runner.setup()
@@ -289,7 +283,8 @@ async def run_cache(  # pylint: disable=too-many-arguments
     rtr_port: int,
     http_port: int,
     datasource: str,
-    location: str,
+    data_location: str | os.PathLike[str],
+    cache_location: str | os.PathLike[str],
     reload: int,
     *,
     refresh: int = 3600,
@@ -308,8 +303,12 @@ async def run_cache(  # pylint: disable=too-many-arguments
         The TCP port to bind the RTR Cache to
     http_port: int
         The TCP port to bind the HTTP server to
-    location: str | os.PathLike[str]
+    datasource: str
+        The chosen datasource
+    data_location: str | os.PathLike[str]
         The path pointing to the datasource file
+    cache_location: str | os.PathLike[str]
+        The path pointing to the cache directory
     reload: int
         The Interval after which RPKIClient is reloaded
     refresh: int
@@ -323,8 +322,18 @@ async def run_cache(  # pylint: disable=too-many-arguments
     match datasource:
         case "RPKICLIENT":
             datasource_instances: dict[int, Datasource] = {
-                0: RPKIClient(version=0, location=location, expire=expire),
-                1: RPKIClient(version=1, location=location, expire=expire),
+                0: RPKIClient(
+                    version=0,
+                    data_location=data_location,
+                    cache_location=cache_location,
+                    expire=expire,
+                ),
+                1: RPKIClient(
+                    version=1,
+                    data_location=data_location,
+                    cache_location=cache_location,
+                    expire=expire,
+                ),
             }
         case _:
             raise ValueError(f"Unsupported datasource: {datasource}")
@@ -332,9 +341,12 @@ async def run_cache(  # pylint: disable=too-many-arguments
     sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
+    # The datasource_reloader coroutine is always executed, while for the others it depends on the
+    # config.
     coroutines = [datasource_reloader(datasource_instances, cache_registry, reload)]
 
     if rtr_port > 0:
+        # Eecute rtr_server if rtr_port is larger than 0
         coroutines.append(
             rtr_server(
                 host,
@@ -349,6 +361,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
         )
 
     if http_port > 0:
+        # Execute http_server is http_port is larger than 0
         coroutines.append(
             http_server(host, http_port, sessions, datasource_instances, cache_registry)
         )

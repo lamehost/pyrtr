@@ -4,13 +4,11 @@ Implements the Abstract Base Class for the Datasource
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from collections.abc import Collection
 from ipaddress import ip_network
 from typing import Any, TypedDict
 
-import msgpack  # pyright: ignore[reportMissingTypeStubs]
-
-from pyrtr import prometheus
+# from pyrtr import prometheus
 from pyrtr.rtr.pdu import ipv4_prefix, ipv6_prefix, router_key
 
 logger = logging.getLogger(__name__)
@@ -22,11 +20,14 @@ class Serialized(TypedDict):
 
     Keys:
     -----
-    vrps: The serialized VRPs
+    vrps: Iterable[bytes]
+        The serialized VRPs
+    router_keys: Iterable[bytes]
+        The Router Keys
     """
 
-    vrps: list[bytes]
-    router_keys: list[bytes]
+    vrps: Collection[bytes]
+    router_keys: Collection[bytes]
 
 
 class Data(TypedDict):
@@ -37,8 +38,6 @@ class Data(TypedDict):
     -----
     timestamp: float
         The unix timestamp the file has been created
-    hash: str
-        The hash of the datasource content
     diffs: Serialized
         The VRP and Router Keys difference between this and the last instance
     serialized: Serialized
@@ -47,8 +46,8 @@ class Data(TypedDict):
         The content provided by the data source
     """
 
-    timestamp: float
     hash: str
+    timestamp: float
     diffs: Serialized
     serialized: Serialized
     content: Any
@@ -79,56 +78,83 @@ class Datasource(ABC):
     Abstract Base Class that defines a data sources that can be passed to Cache and data_reloader().
     """
 
-    def __init__(self, version: int, location: Any, expire: int = 7200):
+    def __init__(self, version: int, data_location: Any, cache_location: Any, expire: int = 7200):
         """
         Arguments:
         ----------
         version: int
             The version identifier
-        location: Any
+        data_location: Any
             The location of the data. The actual type is implementation specific
+        cache_location: Any
+            The location of the cache directory. The actual type is implementation specific
         expire: int
             When the data expires
         """
         self.version: int = version
-        self.location: Any = location
+        self.data_location: Any = data_location
+        self.cache_location: Any = cache_location
         self.expire: int = expire
 
-        # Serial equals 0 means no data is available
-        self.serial: int = 0
-
-        self.copies: dict[int, Data] = {}
-        self.vrps: list[bytes] = []
-        self.router_keys: list[bytes] = []
+        self.snapshots: dict[int, Data] = {}
         self.last_update: str | None = None
 
-    async def purge(self) -> None:  # NOSONAR
+    @property
+    def serial(self) -> int:
         """
-        Deletes expired data copies
-        """
-        self.copies = {
-            serial: data
-            for serial, data in self.copies.items()
-            if data["timestamp"] > datetime.now(timezone.utc).timestamp() - self.expire
-        }
+        Property that returns the current serial number
 
-        if not self.copies:
-            # If there are no copies, then there is no data to send to the clients
-            self.vrps = []
-            self.router_keys = []
-
-    async def dump(self) -> bytes:  # NOSONAR
+        Returns
+        -------
+        int: The current serial number
         """
-        Dumps the content of self.copies to Msgpack
+        try:
+            return max(self.snapshots.keys())
+        except ValueError:
+            # Zero means no data
+            return 0
+
+    @property
+    def vrps(self) -> Collection[bytes]:
+        """
+        Property that returns the current VRPs
+
+        Returns
+        -------
+        Collection[bytes]: The data bytes for each VRP
+        """
+        try:
+            return self.snapshots[self.serial]["serialized"]["vrps"]
+        except KeyError:
+            return []
+
+    @property
+    def router_keys(self) -> Collection[bytes]:
+        """
+        Property that returns the current Router Keys
+
+        Returns
+        -------
+        Collection[bytes]: The data bytes for each Router Key
+        """
+        try:
+            return self.snapshots[self.serial]["serialized"]["router_keys"]
+        except KeyError:
+            return []
+
+    @abstractmethod
+    async def parse(self) -> Data:
+        """
+        Parses data at `self.location` and returns Data
 
         Returns:
         --------
-        bytes: The packed representation of self.copies
+        Data: The parsed Data
         """
-        return msgpack.dumps(self.copies)  # pyright: ignore
+        raise NotImplementedError
 
     @abstractmethod
-    async def reload(self) -> bool:  # NOSONAR
+    async def reload(self) -> bool:
         """
         Reloads data and recalculates diffs
 
@@ -139,40 +165,36 @@ class Datasource(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def parse(self) -> Data:  # NOSONAR
+    async def purge(self) -> None:
         """
-        Parses data at `self.location` and returns Data
-
-        Returns:
-        --------
-        Data: The parsed Data
+        Deletes expired data copies
         """
         raise NotImplementedError
 
-    async def update_prometheus(self, increment_serial: bool = True) -> None:  # NOSONAR
-        """
-        Updates the RPKI prometheus endpoints
+    # async def update_prometheus(self, increment_serial: bool = True) -> None:
+    #     """
+    #     Updates the RPKI prometheus endpoints
 
-        Arguments:
-        ----------
-        increment_serial: bool
-            Whether to increment the metric for the serial counter of not. Defatul: True
-        """
-        match self.version:
-            case 0:
-                if increment_serial:
-                    prometheus.rpki_v0_serial.inc()
-                prometheus.rpki_v0_vrps.set(len(self.vrps))
-                prometheus.rpki_v0_bgpsec_keys.set(len(self.router_keys))
-            case 1:
-                if increment_serial:
-                    prometheus.rpki_v1_serial.inc()
-                prometheus.rpki_v1_vrps.set(len(self.vrps))
-                prometheus.rpki_v1_bgpsec_keys.set(len(self.router_keys))
-            case _:
-                logger.warning(
-                    "Not exporting the RPKI serial counter for version: %d", self.version
-                )
+    #     Arguments:
+    #     ----------
+    #     increment_serial: bool
+    #         Whether to increment the metric for the serial counter of not. Defatul: True
+    #     """
+    #     match self.version:
+    #         case 0:
+    #             if increment_serial:
+    #                 prometheus.rpki_v0_serial.inc()
+    #             prometheus.rpki_v0_vrps.set(len(self.vrps))
+    #             prometheus.rpki_v0_bgpsec_keys.set(len(self.router_keys))
+    #         case 1:
+    #             if increment_serial:
+    #                 prometheus.rpki_v1_serial.inc()
+    #             prometheus.rpki_v1_vrps.set(len(self.vrps))
+    #             prometheus.rpki_v1_bgpsec_keys.set(len(self.router_keys))
+    #         case _:
+    #             logger.warning(
+    #                 "Not exporting the RPKI serial counter for version: %d", self.version
+    #             )
 
     def serialize_router_key(self, asn: int, ski: bytes, pubkey: bytes, flags: int) -> bytes:
         """
