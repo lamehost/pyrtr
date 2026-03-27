@@ -64,3 +64,4 @@ target/
 .pylintrc
 .sonarlint/
 .vscode/
+cache
