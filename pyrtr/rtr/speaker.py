@@ -8,7 +8,7 @@ import socket
 import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from typing import Callable, Self, TypedDict
+from typing import Callable, Collection, Self, TypedDict
 from uuid import uuid4
 
 from typing_extensions import override
@@ -379,7 +379,7 @@ class RTRSpeaker(Speaker):
         self.write(pdu)
         logger.debug("Cache response PDU sent to %s", self.remote)
 
-    def write_vrps(self, vrps: list[bytes]) -> None:
+    def write_vrps(self, vrps: Collection[bytes]) -> None:
         """
         Writes IP prefixes to the wire
 
@@ -391,7 +391,10 @@ class RTRSpeaker(Speaker):
         if self.transport is None:
             raise BrokenPipeError("Transport is not ready")
 
-        self.transport.writelines(vrps)
+        try:
+            self.transport.writelines(vrps)
+        except AssertionError:
+            pass
 
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
@@ -434,7 +437,7 @@ class RTRSpeaker(Speaker):
         self.write(pdu)
         logger.debug("Cache reset PDU sent to %s", self.remote)
 
-    def write_router_keys(self, router_keys: list[bytes]) -> None:
+    def write_router_keys(self, router_keys: Collection[bytes]) -> None:
         """
         Writes Router Keys to the wire
 
@@ -449,7 +452,10 @@ class RTRSpeaker(Speaker):
         if self.transport is None:
             raise BrokenPipeError("Transport is not ready")
 
-        self.transport.writelines(router_keys)
+        try:
+            self.transport.writelines(router_keys)
+        except AssertionError:
+            pass
 
         logger.debug("Router keys PDUs sent to %s", self.remote)
 
