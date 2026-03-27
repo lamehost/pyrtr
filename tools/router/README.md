@@ -5,7 +5,7 @@ Starts a FRF bgpd isntance to test the PyRTR Cache.
 # Run it
 Run the command below to start the FRF bgpd instance. All logs are sent to STDOUT.
 ```
-$ env HOST=172.17.0.1 PORT=8383 docker-compose up; docker-compose down
+$ env HOST=172.17.0.1 PORT=8323 docker-compose up; docker-compose down
 ```
   
 To login into the instance, use (**password**: zebra):
