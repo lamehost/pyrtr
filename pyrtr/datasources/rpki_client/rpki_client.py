@@ -162,13 +162,12 @@ class RPKIClient(Datasource):
         --------
         bytes: The content of the JSON file
         """
-        try:
-            # Test if the `location` is a URL
-            urlparse(self.data_location)
+        # Test if the `data_location` is a URL
+        if urlparse(str(self.data_location)).scheme in ("http", "https"):
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.data_location) as response:
                     return (await response.text()).encode("utf-8")
-        except ValueError:
+        else:
             async with aiofiles.open(self.data_location, mode="rb") as file:
                 return await file.read()
 
@@ -236,7 +235,7 @@ class RPKIClient(Datasource):
         # Yield changes
         added_bgpsec_key_keys: set[bytes] = new_bgpsec_key_keys - old_bgpsec_key_keys
         for key in added_bgpsec_key_keys:
-            new_bgpsec_key = old_bgpsec_keys[key]
+            new_bgpsec_key = new_bgpsec_keys[key]
             # This is not stated anywhere in the rpki-client docs
             ski = base64.b16decode(new_bgpsec_key["ski"], casefold=True)
             # This is not stated anywhere in the rpki-client docs
@@ -470,7 +469,7 @@ class RPKIClient(Datasource):
                             db_path=old_snapshot["content"]["db_path"], table="roas_"
                         ).items()
                     }
-                    vrps = self._calculate_roa_diffs(new_roas=new_roas, old_roas=old_roas)
+                    vrps = self._calculate_roa_diffs(old_roas=old_roas, new_roas=new_roas)
 
                     with KVDB(
                         db_path=old_snapshot["content"]["db_path"], table="vrp_diffs_"
@@ -495,7 +494,7 @@ class RPKIClient(Datasource):
                             db_path=old_snapshot["content"]["db_path"], table="roas_"
                         ).items()
                     }
-                    vrps = self._calculate_roa_diffs(new_roas=new_roas, old_roas=old_roas)
+                    vrps = self._calculate_roa_diffs(old_roas=old_roas, new_roas=new_roas)
 
                     with KVDB(
                         db_path=old_snapshot["content"]["db_path"], table="vrp_diffs_"
@@ -516,8 +515,8 @@ class RPKIClient(Datasource):
                         ).items()
                     }
                     router_keys = self._calculate_bgpsec_key_diffs(
-                        new_bgpsec_keys=new_bgpsec_keys,
                         old_bgpsec_keys=old_bgpsec_keys,
+                        new_bgpsec_keys=new_bgpsec_keys,
                     )
 
                     with KVDB(
@@ -571,7 +570,8 @@ class RPKIClient(Datasource):
                     if (
                         os.path.isfile(file)
                         and file.name.startswith("db_")
-                        and file.name.endswith("_v{self.version}.sqlite")
+                        and file.name.endswith(f"_v{self.version}.sqlite")
                     ):
-                        for filename in KVDB(db_path=file.name, table="").purge():
+                        db_path = os.path.join(self.cache_location, file.name)
+                        for filename in KVDB(db_path=db_path, table="").purge():
                             logger.debug("Purging file from cache: %s", filename)

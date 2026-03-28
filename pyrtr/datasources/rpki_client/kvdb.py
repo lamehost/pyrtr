@@ -65,7 +65,7 @@ class KVDB(MutableMapping[bytes, Any]):
         self.table = table
         self._conn = None
 
-    def __execute(self, query: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
+    def _execute(self, query: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
         if self._conn is None:
             raise ValueError("KVDB is closed. Use 'with' or call .open()")
 
@@ -85,7 +85,7 @@ class KVDB(MutableMapping[bytes, Any]):
         """
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path, isolation_level=None)
-            self.__execute("PRAGMA journal_mode=WAL;")
+            self._execute("PRAGMA journal_mode=WAL;")
         return self
 
     def purge(self) -> Iterator[str]:
@@ -106,7 +106,7 @@ class KVDB(MutableMapping[bytes, Any]):
         """
         self.open()
         self.begin()
-        self.__execute(
+        self._execute(
             "CREATE TABLE IF NOT EXISTS __TABLE__ ("
             "  key BLOB PRIMARY KEY, unserialize BOOL, value BLOB"
             ")"
@@ -119,26 +119,26 @@ class KVDB(MutableMapping[bytes, Any]):
         """
         self.open()
         self.begin()
-        self.__execute("DROP TABLE __TABLE__")
+        self._execute("DROP TABLE __TABLE__")
         self.commit()
 
     def commit(self) -> None:
         """
         Commits transaction to the database
         """
-        self.__execute("COMMIT")
+        self._execute("COMMIT")
 
     def rollback(self):
         """
         Rolls back the transation from the database
         """
-        self.__execute("ROLLBACK")
+        self._execute("ROLLBACK")
 
     def begin(self):
         """
         Begins a transaction
         """
-        self.__execute("BEGIN")
+        self._execute("BEGIN")
 
     def __enter__(self) -> Self:
         """
@@ -165,7 +165,7 @@ class KVDB(MutableMapping[bytes, Any]):
         --------
         Any: The value corresponding to the key
         """
-        cursor = self.__execute("SELECT value, unserialize FROM __TABLE__ WHERE key = ?", (key,))
+        cursor = self._execute("SELECT value, unserialize FROM __TABLE__ WHERE key = ?", (key,))
         row = cursor.fetchone()
         if row is None:
             raise KeyError(key)
@@ -189,10 +189,13 @@ class KVDB(MutableMapping[bytes, Any]):
         if isinstance(value, bytes):
             unserialize = False
         else:
-            value = msgpack.packb(value, use_bin_type=True)  # type: ignore
-            unserialize = True
+            try:
+                value = msgpack.packb(value, use_bin_type=True)  # type: ignore
+                unserialize = True
+            except msgpack.exceptions.PackValueError as error:
+                raise ValueError(f"Value cannot be serialized: {error}") from error
 
-        self.__execute(
+        self._execute(
             "INSERT OR REPLACE INTO __TABLE__ (key, unserialize, value) VALUES (?, ?, ?)",
             (key, unserialize, value),
         )
@@ -206,7 +209,7 @@ class KVDB(MutableMapping[bytes, Any]):
         key: bytes
             The key name
         """
-        self.__execute("DELETE FROM __TABLE__ WHERE key = ?", (key,))
+        self._execute("DELETE FROM __TABLE__ WHERE key = ?", (key,))
 
     def __iter__(self) -> Iterator[Any]:
         """
@@ -216,7 +219,7 @@ class KVDB(MutableMapping[bytes, Any]):
         -------
         Iterator[bytes]: The keys
         """
-        cursor = self.__execute("SELECT key FROM __TABLE__")
+        cursor = self._execute("SELECT key FROM __TABLE__")
         for row in cursor:
             yield row[0]
 
@@ -229,7 +232,7 @@ class KVDB(MutableMapping[bytes, Any]):
         int: The number of keys
         """
 
-        cursor = self.__execute("SELECT COUNT(*) FROM __TABLE__")
+        cursor = self._execute("SELECT COUNT(*) FROM __TABLE__")
         return next(iter(cursor.fetchone()))
 
     def close(self) -> None:
