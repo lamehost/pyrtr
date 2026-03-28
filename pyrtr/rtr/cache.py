@@ -4,12 +4,12 @@ Defines the RTR protocol sequence for the RTR Cache
 
 import logging
 from asyncio import Transport
-from typing import Callable, Self, TypedDict
+from typing import Callable, Self
 
 from typing_extensions import override
 
 from pyrtr.datasources import Datasource
-from pyrtr.rtr.speaker import RTRSpeaker
+from pyrtr.rtr.speaker import RTRSpeaker, RTRHeader, RTRTimers
 
 from .pdu import (
     error_report,
@@ -26,16 +26,6 @@ from .pdu.errors import (
 logger = logging.getLogger(__name__)
 
 
-class RTRHeader(TypedDict, total=True):
-    """
-    Fixed fields present in every RTR PDU that are required to identify the PDU type.
-    """
-
-    version: int
-    type: int
-    length: int
-
-
 class Cache(RTRSpeaker):
     """
     Handles the the sequences of PDU transmissions of an RTR Cache
@@ -49,9 +39,7 @@ class Cache(RTRSpeaker):
         disconnect_callback: Callable[[Self], None] | None = None,
         sessions: dict[int, int],
         datasources: dict[int, Datasource],
-        refresh: int = 3600,
-        retry: int = 600,
-        expire: int = 7200,
+        timers: RTRTimers = RTRTimers(),
     ):
         """
         Arguments:
@@ -76,9 +64,7 @@ class Cache(RTRSpeaker):
         self.datasources = datasources
         self.datasource: Datasource | None = None
 
-        self.refresh = refresh
-        self.expire = expire
-        self.retry = retry
+        self.timers = timers
 
         super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
 
@@ -132,11 +118,7 @@ class Cache(RTRSpeaker):
         if self.version >= 1:
             self.write_router_keys(router_keys=router_keys)
 
-        self.write_end_of_data(
-            refresh=self.refresh,
-            expire=self.expire,
-            retry=self.retry,
-        )
+        self.write_end_of_data(self.timers)
 
     def handle_reset_query(self, data: bytes) -> None:
         """
@@ -163,11 +145,7 @@ class Cache(RTRSpeaker):
         if self.version >= 1:
             self.write_router_keys(router_keys=self.datasource.router_keys)
 
-        self.write_end_of_data(
-            refresh=self.refresh,
-            expire=self.expire,
-            retry=self.retry,
-        )
+        self.write_end_of_data(self.timers)
 
     def handle_pdu(self, header: RTRHeader, data: bytes) -> None:
         """

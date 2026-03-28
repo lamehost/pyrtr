@@ -13,6 +13,7 @@ from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp
 from pyrtr import prometheus
 from pyrtr.datasources import Datasource, RPKIClient
 from pyrtr.rtr.cache import Cache
+from pyrtr.rtr.speaker import RTRTimers
 
 logger = logging.getLogger(__name__)
 
@@ -222,9 +223,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
     *,
-    refresh: int = 3600,
-    retry: int = 600,
-    expire: int = 7200,
+    timers: RTRTimers = RTRTimers(),
 ) -> None:
     """
     Starts a local async RTR server and binds it to the specified host and port
@@ -241,12 +240,8 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         Datasources instances (one per version)
     cache_registry: Cache
         The RTR Cache registry
-    refresh: int
-        Refresh Interval in seconds. Default: 3600
-    retry: int
-        Retry Interval in seconds. Default: 600
-    expire: int
-        Expire Interval in seconds: Expire: 7200
+    timers: RTRTimers
+        The RTR timers
     """
     # Initialize server
     loop = asyncio.get_running_loop()
@@ -257,9 +252,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
             disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
             sessions=sessions,
             datasources=datasources,
-            refresh=refresh,
-            retry=retry,
-            expire=expire,
+            timers=timers,
         ),
         host,
         port,
@@ -283,13 +276,11 @@ async def run_cache(  # pylint: disable=too-many-arguments
     rtr_port: int,
     http_port: int,
     datasource: str,
-    data_location: str | os.PathLike[str],
-    cache_location: str | os.PathLike[str],
     reload: int,
     *,
-    refresh: int = 3600,
-    retry: int = 600,
-    expire: int = 7200,
+    data_location: str | os.PathLike[str],
+    cache_location: str | os.PathLike[str],
+    timers: RTRTimers = RTRTimers(),
 ) -> None:
     """
     Reloads the content of the RPKI datasource output every half `refresh`, and starts the RTR
@@ -303,20 +294,16 @@ async def run_cache(  # pylint: disable=too-many-arguments
         The TCP port to bind the RTR Cache to
     http_port: int
         The TCP port to bind the HTTP server to
+    reload: int
+        The Interval after which the Datasource is reloaded
     datasource: str
         The chosen datasource
     data_location: str | os.PathLike[str]
         The path pointing to the datasource file
     cache_location: str | os.PathLike[str]
         The path pointing to the cache directory
-    reload: int
-        The Interval after which RPKIClient is reloaded
-    refresh: int
-        Refresh Interval in seconds. Default: 3600
-    retry: int
-        Retry Interval in seconds. Default: 600
-    expire: int
-        Expire Interval in seconds: Expire: 7200
+    timers: RTRTimers
+        The RTR timers
     """
 
     match datasource:
@@ -326,13 +313,13 @@ async def run_cache(  # pylint: disable=too-many-arguments
                     version=0,
                     data_location=data_location,
                     cache_location=cache_location,
-                    expire=expire,
+                    expire=timers.expire,
                 ),
                 1: RPKIClient(
                     version=1,
                     data_location=data_location,
                     cache_location=cache_location,
-                    expire=expire,
+                    expire=timers.expire,
                 ),
             }
         case _:
@@ -354,9 +341,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
                 sessions,
                 datasource_instances,
                 cache_registry,
-                refresh=refresh,
-                expire=expire,
-                retry=retry,
+                timers=timers,
             )
         )
 

@@ -7,6 +7,7 @@ import logging
 import socket
 import struct
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import Callable, Collection, Self, TypedDict
 from uuid import uuid4
@@ -38,6 +39,16 @@ from .pdu.errors import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class RTRTimers:
+    """
+    Defines the RTR timers in seconds
+    """
+    refresh: int = 3600
+    retry: int = 600
+    expire: int = 7200
+
+
 class SupportedVersions(IntEnum):
     """
     Defines the supported RTR versions
@@ -47,7 +58,7 @@ class SupportedVersions(IntEnum):
     VERSION_1 = 1
 
 
-class RTRHeader(TypedDict):
+class RTRHeader(TypedDict, total=True):
     """
     Fixed fields present in every RTR PDU that are required to identify the PDU type.
     """
@@ -398,19 +409,16 @@ class RTRSpeaker(Speaker):
 
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
-    def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
+    def write_end_of_data(self, timers: RTRTimers) -> None:
         """
         Writes an End Of Data PDU to the wire
 
         Arguments:
         ----------
-        refresh: int
-            Refresh Interval in seconds. Default: 3600
-        retry: int
-            Retry Interval in seconds. Default: 600
-        expire: int
-            Expire Interval in seconds: Expire: 7200
+        timers: RTRTimers
+            The RTR timers
         """
+
         if self.version is None or self.session is None:
             raise InternalError("Inconsistent version state.")
 
@@ -418,9 +426,9 @@ class RTRSpeaker(Speaker):
             version=self.version,
             session=self.session,
             serial=self.current_serial,
-            refresh=refresh,
-            retry=retry,
-            expire=expire,
+            refresh=timers.refresh,
+            retry=timers.retry,
+            expire=timers.expire,
         )
 
         self.write(pdu)
