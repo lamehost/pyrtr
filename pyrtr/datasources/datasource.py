@@ -4,9 +4,10 @@ Implements the Abstract Base Class for the Datasource
 
 import logging
 from abc import ABC, abstractmethod
+from base64 import b64encode
 from collections.abc import Collection
 from ipaddress import ip_network
-from typing import Any, TypedDict
+from typing import Any, AsyncGenerator, TypedDict
 
 # from pyrtr import prometheus
 from pyrtr.rtr.pdu import ipv4_prefix, ipv6_prefix, router_key
@@ -71,6 +72,23 @@ class RouterKey(TypedDict):
     pubkey: str
     ta: str
     expires: int
+
+
+class DumpMetadata(TypedDict):
+    """Data dump metadata (usually yielded as the first item of a dump)"""
+    type: str
+    version: int
+    serial: int
+    snapshots: list[int]
+    last_update: str | None
+
+
+class SerializedDump(TypedDict):
+    """Data dump for serialized VRPs and Router Keys"""
+    type: str
+    version: int
+    serial: int
+    serialized: str
 
 
 class Datasource(ABC):
@@ -253,3 +271,55 @@ class Datasource(ABC):
             max_length=maxlength,
             asn=asn,
         )
+
+    async def dump(self) -> AsyncGenerator[DumpMetadata | SerializedDump, None]:
+        """
+        Dumps the current data to JSON serializable format.
+        The first yielded dict contains the metadata of the dump, while the following dicts contain
+        the data itself.
+
+        Yields:
+        -------
+        dict[str, DumpMetadata | SerializedDump]: The metadata and data of the data dumps
+        """
+
+        yield DumpMetadata(
+            type="metadata",
+            version=self.version,
+            serial=self.serial,
+            snapshots=list(self.snapshots.keys()),
+            last_update=str(self.last_update) if self.last_update else None,
+        )
+
+        for vrp in self.vrps:
+            yield SerializedDump(
+                type="vrp",
+                version=self.version,
+                serial=self.serial,
+                serialized=b64encode(vrp).decode(),
+            )
+
+        for _router_key in self.router_keys:
+            yield SerializedDump(
+                type="router_key",
+                version=self.version,
+                serial=self.serial,
+                serialized=b64encode(_router_key).decode(),
+            )
+
+        for serial, snapshot in self.snapshots.items():
+            for vrp in snapshot["diffs"]["vrps"]:
+                yield SerializedDump(
+                    type="vrp_diff",
+                    version=self.version,
+                    serial=serial,
+                    serialized=b64encode(vrp).decode(),
+                )
+
+            for _router_key in snapshot["diffs"]["router_keys"]:
+                yield SerializedDump(
+                    type="router_key_diff",
+                    version=self.version,
+                    serial=serial,
+                    serialized=b64encode(_router_key).decode(),
+                )

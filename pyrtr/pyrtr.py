@@ -7,6 +7,7 @@ import os
 import random
 from typing import TypedDict
 
+import orjson
 from aiohttp import web
 from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp_handler
 
@@ -47,6 +48,7 @@ async def http_server(
      - /clients: List of connected clients
      - /healthz: Application status
      - /metrics: Prometheus metrics
+     - /dumps: Dumps of the current data in the datasources
 
     Arguments:
     ----------
@@ -95,10 +97,23 @@ async def http_server(
 
         return web.json_response(status)
 
+    async def get_dumps(request: web.Request) -> web.StreamResponse:  # NOSONAR
+        response = web.StreamResponse()
+        response.headers["Content-Type"] = "application/jsonl"
+        await response.prepare(request)
+
+        for datasource in datasources.values():
+            async for line in datasource.dump():
+                await response.write(orjson.dumps(line) + b"\n")  # pylint: disable=no-member
+                await asyncio.sleep(0)
+
+        return response
+
     webapp = web.Application()
     webapp.router.add_get("/clients", get_clients, allow_head=True)
     webapp.router.add_get("/healthz", get_health, allow_head=True)
     webapp.router.add_get("/metrics", prometheus_aiohttp_handler(), allow_head=True)
+    webapp.router.add_get("/dumps", get_dumps, allow_head=True)
 
     runner = web.AppRunner(webapp)
     await runner.setup()
