@@ -7,7 +7,6 @@ import logging
 import socket
 import struct
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from enum import IntEnum
 from typing import Callable, Collection, Self, TypedDict
 from uuid import uuid4
@@ -39,17 +38,6 @@ from .pdu.errors import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RTRTimers:
-    """
-    Defines the RTR timers in seconds
-    """
-
-    refresh: int = 3600
-    retry: int = 600
-    expire: int = 7200
-
-
 class SupportedVersions(IntEnum):
     """
     Defines the supported RTR versions
@@ -78,6 +66,13 @@ class SliceSizeError(Exception):
 class Speaker(asyncio.BufferedProtocol, ABC):
     """
     Abstract Base Class that defines a TCP speaker
+
+    Arguments:
+    ----------
+    connect_callback: Callable[[Self], None] | None = None
+        The method executed after the connection is established
+    disconnect_callback: Callable[[Self], None] | None = None
+        The method executed after the connection is terminated
     """
 
     def __init__(
@@ -86,14 +81,6 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         connect_callback: Callable[[Self], None] | None = None,
         disconnect_callback: Callable[[Self], None] | None = None,
     ):
-        """
-        Arguments:
-        ----------
-        connect_callback: Callable[[Self], None] | None = None
-            The method executed after the connection is established
-        disconnect_callback: Callable[[Self], None] | None = None
-            The method executed after the connection is terminated
-        """
         self.connect_callback: Callable[[Self], None] | None = connect_callback
         self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
 
@@ -108,7 +95,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         self, transport: asyncio.Transport
     ) -> None:
         """
-        Called when a connection is made.
+        Called when a connection is established
 
         transport: asyncio.Transport
              Transport representing the connection.
@@ -206,11 +193,11 @@ class Speaker(asyncio.BufferedProtocol, ABC):
 
     def rebase_buffer(self, offset: int) -> None:
         """
-        Shifts data at offset at the start of the buffer and resets data_length
+        Shifts data starting at `offset` at the beginning of the buffer and resets data_length
 
         Arguments:
         ----------
-        offset: imt
+        offset: int
             Where within buffer you want to shift data from
         """
         remaining_data = self._buffer[offset : self._data_length]
@@ -228,6 +215,9 @@ class Speaker(asyncio.BufferedProtocol, ABC):
         nbytes: int
             The amount of bytes added to the buffer
         """
+        # Update data length and log buffer utilization stats.
+        # Buffer is of fixed size, so data_length is used to track how many bytes of the buffer are
+        # currently filled with data
         self._data_length = self._data_length + nbytes
         buffer_percent = round(self._data_length * 100 / len(self._buffer))
         logger.debug(
@@ -237,7 +227,7 @@ class Speaker(asyncio.BufferedProtocol, ABC):
             buffer_percent,
         )
 
-        # Read data
+        # Read PDUs from the buffer until there is not enough data to read a full PDU.
         offset: int = 0
         while offset < self._data_length:
             try:
@@ -245,6 +235,8 @@ class Speaker(asyncio.BufferedProtocol, ABC):
                 # Update offset
                 offset = offset + read_data
             except SliceSizeError:
+                # Rebase the buffer to move the remaining data at the start of the buffer and update
+                # data_length
                 self.rebase_buffer(offset)
                 return
 
@@ -284,7 +276,7 @@ class RTRSpeaker(Speaker):
         --------
         RTRHeader: The parsed RTR header
         """
-        # Parser header
+        # Parser header. The header is always 8 bytes long.
         fields = struct.unpack("!BBHI", data[:8])
 
         return RTRHeader(
@@ -304,8 +296,8 @@ class RTRSpeaker(Speaker):
         data: bytes
             The PDU
         """
-        # Version negotiation
         if self.version is None:
+            # Negotiate version
             try:
                 self.version = SupportedVersions(header["version"]).value
             except ValueError:
@@ -318,8 +310,8 @@ class RTRSpeaker(Speaker):
                     f"Unsupported protocol version: {header['version']}"
                 ) from error
         else:
-            # Version changed
             if self.version != header["version"]:
+                # Version has changed. Version shall never change
                 raise UnexpectedProtocolVersionError(
                     f"Negotiated protocol version is {self.version},"
                     f" received version is {header['version']}",
@@ -410,14 +402,18 @@ class RTRSpeaker(Speaker):
 
         logger.debug("IP prefix PDUs sent to %s", self.remote)
 
-    def write_end_of_data(self, timers: RTRTimers) -> None:
+    def write_end_of_data(self, refresh: int = 3600, retry: int = 600, expire: int = 7200) -> None:
         """
         Writes an End Of Data PDU to the wire
 
         Arguments:
         ----------
-        timers: RTRTimers
-            The RTR timers
+        refresh: int
+            The refresh timer value. Default: 3600
+        retry: int
+            The retry timer value. Default: 600
+        expire: int
+            The expire timer value. Default: 7200
         """
 
         if self.version is None or self.session is None:
@@ -427,9 +423,9 @@ class RTRSpeaker(Speaker):
             version=self.version,
             session=self.session,
             serial=self.current_serial,
-            refresh=timers.refresh,
-            retry=timers.retry,
-            expire=timers.expire,
+            refresh=refresh,
+            retry=retry,
+            expire=expire,
         )
 
         self.write(pdu)
@@ -470,7 +466,7 @@ class RTRSpeaker(Speaker):
 
     def write_error_report(self, error: int, pdu: bytes = bytes(), text: bytes = bytes()) -> None:
         """
-        Writes an Error Report PDU  to the wire
+        Writes an Error Report PDU to the wire
 
         Arguments:
         ----------
@@ -491,7 +487,7 @@ class RTRSpeaker(Speaker):
     @abstractmethod
     def handle_pdu(self, header: RTRHeader, data: bytes) -> None:
         """
-        Handles the inbound PDU.
+        Handles the inbound PDU. This is an abstract method.
 
         header: RTRHeader
             The fixed header part of the PDU
@@ -501,9 +497,9 @@ class RTRSpeaker(Speaker):
         """
         raise NotImplementedError
 
-    def raise_on_error_report(self, data: bytes) -> None:
+    def handle_error_report(self, data: bytes) -> None:
         """
-        Handles the Error Report PDU and raises a PDUError
+        Handles the Error Report PDU by raising a PDUError exception.
 
         Arguments:
         ----------
@@ -540,9 +536,9 @@ class RTRSpeaker(Speaker):
             case _:
                 logger.warning("Received an unsupported error report type: %d", pdu["error"])
 
-    def handle_pdu_error_exception(self, header: RTRHeader | None, error: PDUError) -> bool:
+    def handle_pduerror_exception(self, header: RTRHeader | None, error: PDUError) -> bool:
         """
-        Handles PDUErrors
+        Handles PDUError exceptions by sending an Error Report PDU if possible.
 
         header: RTRHeader | None
             The fixed header part of the PDU
@@ -551,7 +547,7 @@ class RTRSpeaker(Speaker):
 
         Returns:
         --------
-        bool: Whether is the error is fatal or not
+        bool: Whether the error is fatal or not
         """
         if error.fatal:
             logger.info("Fatal error while handling a PDU from %s: %s", self.remote, str(error))
@@ -604,12 +600,14 @@ class RTRSpeaker(Speaker):
             self.handle_pdu(header, pdu_data)
         except PDUError as error:
             if self.version is not None:
-                # If the version happend AFTER version was negotaited
-                exit_loop = self.handle_pdu_error_exception(header, error)
+                # If the exception happened AFTER version was negotiated, handle the error and
+                # decide to exit the loop if the errors is fatal.
+                exit_loop = self.handle_pduerror_exception(header, error)
                 if exit_loop and self.transport is not None:
                     self.transport.close()
             elif self.transport:
-                # If the error happened BEFORE version was negotiated
+                # If the error happened BEFORE version was negotiated and transport is available,
+                # close the transport as we cannot send an error report without version negotiation
                 self.transport.close()
 
         return len(pdu_data)

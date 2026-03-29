@@ -9,7 +9,7 @@ from typing import Callable, Self
 from typing_extensions import override
 
 from pyrtr.datasources import Datasource
-from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker, RTRTimers
+from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker
 
 from .pdu import (
     error_report,
@@ -39,7 +39,9 @@ class Cache(RTRSpeaker):
         disconnect_callback: Callable[[Self], None] | None = None,
         sessions: dict[int, int],
         datasources: dict[int, Datasource],
-        timers: RTRTimers = RTRTimers(),
+        refresh: int = 3600,
+        retry: int = 600,
+        expire: int = 7200,
     ):
         """
         Arguments:
@@ -64,7 +66,9 @@ class Cache(RTRSpeaker):
         self.datasources = datasources
         self.datasource: Datasource | None = None
 
-        self.timers = timers
+        self.refresh = refresh
+        self.retry = retry
+        self.expire = expire
 
         super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
 
@@ -118,7 +122,7 @@ class Cache(RTRSpeaker):
         if self.version >= 1:
             self.write_router_keys(router_keys=router_keys)
 
-        self.write_end_of_data(self.timers)
+        self.write_end_of_data(refresh=self.refresh, retry=self.retry, expire=self.expire)
 
     def handle_reset_query(self, data: bytes) -> None:
         """
@@ -145,7 +149,7 @@ class Cache(RTRSpeaker):
         if self.version >= 1:
             self.write_router_keys(router_keys=self.datasource.router_keys)
 
-        self.write_end_of_data(self.timers)
+        self.write_end_of_data(refresh=self.refresh, retry=self.retry, expire=self.expire)
 
     def handle_pdu(self, header: RTRHeader, data: bytes) -> None:
         """
@@ -174,6 +178,6 @@ class Cache(RTRSpeaker):
                 self.handle_reset_query(data)
             case error_report.TYPE:
                 logger.debug("Error report PDU received from %s", self.remote)
-                self.raise_on_error_report(data)
+                self.handle_error_report(data)
             case _:
                 raise UnsupportedPDUTypeError(f"Unsupported PDU Type: {header["type"]}")

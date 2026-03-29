@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     RTR_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8323
     HTTP_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8080
     DATASOURCE: DatasourceEnums = DatasourceEnums.RPKICLIENT
-    DATA_LOCATION: str = "json"
-    CACHE_LOCATION: str | PathLike[str] = "./cache"
+    DATA_LOCATION: str | None = "json"
+    CACHE_LOCATION: str | PathLike[str] | None = "./cache"
     RELOAD: Annotated[int, Field(gt=29, lt=3601)] = 900
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6

@@ -7,7 +7,6 @@ import logging
 import sys
 
 from pyrtr.pyrtr import run_cache
-from pyrtr.rtr.speaker import RTRTimers
 from pyrtr.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -35,15 +34,13 @@ def main() -> None:
             host=str(settings.HOST),
             rtr_port=settings.RTR_PORT,
             http_port=settings.HTTP_PORT,
+            reload=settings.RELOAD,
             datasource=settings.DATASOURCE,
             data_location=settings.DATA_LOCATION,
             cache_location=settings.CACHE_LOCATION,
-            reload=settings.RELOAD,
-            timers=RTRTimers(
-                refresh=settings.REFRESH,
-                retry=settings.RETRY,
-                expire=settings.EXPIRE,
-            ),
+            refresh=settings.REFRESH,
+            retry=settings.RETRY,
+            expire=settings.EXPIRE,
         )
     )
 

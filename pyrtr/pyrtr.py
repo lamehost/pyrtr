@@ -13,7 +13,6 @@ from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp
 from pyrtr import prometheus
 from pyrtr.datasources import Datasource, RPKIClient
 from pyrtr.rtr.cache import Cache
-from pyrtr.rtr.speaker import RTRTimers
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +117,8 @@ async def datasource_reloader(
     sleep: int = 900,
 ) -> None:
     """
-    Reloads the content of Datasource. Holds `sleeps` seconds between every attempt
+    Reloads the content of the Datasource, and notify clients of changes.
+    Holds `sleeps` seconds between every attempt
 
     Arguments:
     ----------
@@ -130,19 +130,20 @@ async def datasource_reloader(
         Sleep interval in seconds. Default: 900
     """
     while True:
-        # Remove stale entries
+        # There is one datasource per version
         for datasource in datasources.values():
+            # Remove stale snapshots from the datasource
             await datasource.purge()
 
             try:
-                # Load new entries
+                # Load new snapshots
                 await datasource.reload()
             except Exception as error:  # pylint: disable=broad-exception-caught
                 logger.exception("Unable to reload the data source: %s", error, exc_info=True)
                 continue
 
             logger.info(
-                "Data source reloaded for V%d: %d VRPs, %d BGPsec Keys",
+                "Data source reloaded for v%d: %d VRPs, %d BGPsec Keys",
                 datasource.version,
                 len(datasource.vrps),
                 len(datasource.router_keys),
@@ -151,20 +152,23 @@ async def datasource_reloader(
             cache_ids = list(cache_registry)
             for cache_id in cache_ids:
                 try:
-                    # cache_registry might change outside the function while we iterate through it
                     cache = cache_registry[cache_id]
                 except KeyError:
+                    # cache_registry might change outside the function while we iterate through it
                     continue
 
                 if datasource.version != cache.version:
                     continue
 
                 if not cache.current_serial or not cache.datasource:
-                    # Version is still unknown
+                    # Cache isntances are registered immediately after the connection is
+                    # established, but before the version is determined.
+                    # In this phase, the datasource might not be set yet.
                     continue
 
-                # Notify clients if needed
                 if cache.current_serial != cache.datasource.serial:
+                    # Notify clients that the current serial has changed,
+                    # so that they can trigger a Serial Query PDU
                     try:
                         cache.write_serial_notify()
                         cache.current_serial = cache.datasource.serial
@@ -177,7 +181,8 @@ async def datasource_reloader(
 
 def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     """
-    Registers the Cache instance to the Cache registry.
+    Registers a Cache instance to the Cache registry. Usually triggered when a client connects to
+    the RTR server.
 
     Arguments:
     ----------
@@ -196,7 +201,8 @@ def register_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
 
 def unregister_cache(cache: Cache, *, cache_registry: dict[str, Cache]) -> None:
     """
-    Unregisters the Cache instance from the Cache registry.
+    Unregisters a Cache instance from the Cache registry. Usually triggered whena a client
+    disconnects from the RTR server.
 
     Arguments:
     ----------
@@ -223,7 +229,9 @@ async def rtr_server(  # pylint: disable=too-many-arguments
     datasources: dict[int, Datasource],
     cache_registry: dict[str, Cache],
     *,
-    timers: RTRTimers = RTRTimers(),
+    refresh: int = 3600,
+    retry: int = 600,
+    expire: int = 7200,
 ) -> None:
     """
     Starts a local async RTR server and binds it to the specified host and port
@@ -240,28 +248,34 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         Datasources instances (one per version)
     cache_registry: Cache
         The RTR Cache registry
-    timers: RTRTimers
-        The RTR timers
+    refresh: int
+        Refresh Interval in seconds. Default: 3600
+    retry: int
+        Retry Interval in seconds. Default: 600
+    expire: int
+         Expire Interval in seconds. Default: 7200
     """
-    # Initialize server
+    # Initialize the server
     loop = asyncio.get_running_loop()
-
     server = await loop.create_server(
         lambda: Cache(
             connect_callback=functools.partial(register_cache, cache_registry=cache_registry),
             disconnect_callback=functools.partial(unregister_cache, cache_registry=cache_registry),
             sessions=sessions,
             datasources=datasources,
-            timers=timers,
+            refresh=refresh,
+            retry=retry,
+            expire=expire,
         ),
         host,
         port,
         keep_alive=True,
     )
 
+    # Start the server
     async with server:
         logger.info(
-            "RTR Cache listening at %s:%d. V0 Session: %d. V1 Session: %d",
+            "RTR Cache listening at %s:%d. v0 Session: %d. v1 Session: %d",
             host,
             port,
             sessions.get(0),
@@ -275,12 +289,14 @@ async def run_cache(  # pylint: disable=too-many-arguments
     host: str,
     rtr_port: int,
     http_port: int,
-    datasource: str,
     reload: int,
+    datasource: str,
     *,
-    data_location: str | os.PathLike[str],
-    cache_location: str | os.PathLike[str],
-    timers: RTRTimers = RTRTimers(),
+    data_location: str | os.PathLike[str] | None = None,
+    cache_location: str | os.PathLike[str] | None = None,
+    refresh: int = 3600,
+    retry: int = 600,
+    expire: int = 7200,
 ) -> None:
     """
     Reloads the content of the RPKI datasource output every half `refresh`, and starts the RTR
@@ -298,33 +314,42 @@ async def run_cache(  # pylint: disable=too-many-arguments
         The Interval after which the Datasource is reloaded
     datasource: str
         The chosen datasource
-    data_location: str | os.PathLike[str]
-        The path pointing to the datasource file
-    cache_location: str | os.PathLike[str]
-        The path pointing to the cache directory
-    timers: RTRTimers
-        The RTR timers
+    data_location: str | os.PathLike[str] | None
+        The path pointing to the datasource file. Default: None
+    cache_location: str | os.PathLike[str] | None
+        The path pointing to the cache directory. Default: None
+    refresh: int
+        Refresh Interval in seconds. Default: 3600
+    retry: int
+        Retry Interval in seconds. Default: 600
+    expire: int
+        Expire Interval in seconds. Default: 7200
     """
 
     match datasource:
         case "RPKICLIENT":
+            if data_location is None:
+                raise ValueError("data_location is required for RPKICLIENT datasource")
+            if cache_location is None:
+                raise ValueError("cache_location is required for RPKICLIENT datasource")
             datasource_instances: dict[int, Datasource] = {
                 0: RPKIClient(
                     version=0,
                     data_location=data_location,
                     cache_location=cache_location,
-                    expire=timers.expire,
+                    expire=expire,
                 ),
                 1: RPKIClient(
                     version=1,
                     data_location=data_location,
                     cache_location=cache_location,
-                    expire=timers.expire,
+                    expire=expire,
                 ),
             }
         case _:
             raise ValueError(f"Unsupported datasource: {datasource}")
 
+    # Initialize the session IDs and the Cache registry
     sessions: dict[int, int] = {0: random.randint(0, 65535), 1: random.randint(0, 65535)}
     cache_registry: dict[str, Cache] = {}
 
@@ -341,7 +366,9 @@ async def run_cache(  # pylint: disable=too-many-arguments
                 sessions,
                 datasource_instances,
                 cache_registry,
-                timers=timers,
+                refresh=refresh,
+                retry=retry,
+                expire=expire,
             )
         )
 
