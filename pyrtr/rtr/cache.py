@@ -9,7 +9,7 @@ from typing import Callable, Self
 from typing_extensions import override
 
 from pyrtr.datasources import Datasource
-from pyrtr.rtr.speaker import RTRSpeaker, RTRHeader, RTRTimers
+from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker, RTRTimers
 
 from .pdu import (
     error_report,

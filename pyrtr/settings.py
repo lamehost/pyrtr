@@ -27,7 +27,6 @@ class DatasourceEnums(str, Enum):
     Supported Datasources
     """
 
-    PYRTR = "PYRTR"
     RPKICLIENT = "RPKICLIENT"
 
 

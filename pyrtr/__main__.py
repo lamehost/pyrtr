@@ -43,7 +43,7 @@ def main() -> None:
                 refresh=settings.REFRESH,
                 retry=settings.RETRY,
                 expire=settings.EXPIRE,
-            )
+            ),
         )
     )
 

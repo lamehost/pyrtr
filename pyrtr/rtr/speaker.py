@@ -44,6 +44,7 @@ class RTRTimers:
     """
     Defines the RTR timers in seconds
     """
+
     refresh: int = 3600
     retry: int = 600
     expire: int = 7200
