@@ -53,6 +53,6 @@ Loads the RPKI Client JSON file.
 ## HTTP endpoints
 The following HTTP endpoints are available at HTTP port 8080:
  - **/clients**: List of connected clients
- - **/copies**: Msgpack packed representation of the Datasource copies in memory
+ - **/dumps**: JSONL stream representing the RPKI data structures
  - **/healthz**: Application status
  - **/metrics**: Prometheus metrics
