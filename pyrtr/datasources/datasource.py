@@ -74,6 +74,15 @@ class RouterKey(TypedDict):
     expires: int
 
 
+class SnapshotDump(TypedDict):
+    """Data dump for a snapshot"""
+
+    type: str
+    version: int
+    serial: int
+    hash: str
+    timestamp: str
+
 class DumpMetadata(TypedDict):
     """Data dump metadata (usually yielded as the first item of a dump)"""
     type: str
@@ -272,17 +281,19 @@ class Datasource(ABC):
             asn=asn,
         )
 
-    async def dump(self) -> AsyncGenerator[DumpMetadata | SerializedDump, None]:
+    async def dump(self) -> AsyncGenerator[DumpMetadata | SnapshotDump | SerializedDump, None]:
         """
         Dumps the current data to JSON serializable format.
-        The first yielded dict contains the metadata of the dump, while the following dicts contain
-        the data itself.
+        The first yielded dict contains the metadata of the dump, then snapshots follows, and the 
+        remaining dicts contain the serialized data encoded in base64.
 
         Yields:
         -------
-        dict[str, DumpMetadata | SerializedDump]: The metadata and data of the data dumps
+        AsyncGeneratr[DumpMetadata | SnapshotDump | SerializedDump, None]: The metadata and data of
+        the data dumps
         """
 
+        # Metadata dump
         yield DumpMetadata(
             type="metadata",
             version=self.version,
@@ -291,6 +302,17 @@ class Datasource(ABC):
             last_update=str(self.last_update) if self.last_update else None,
         )
 
+        # Snapshots dump
+        for snapshot_serial, snapshot in self.snapshots.items():
+            yield SnapshotDump(
+                type="snapshot",
+                version=self.version,
+                serial=snapshot_serial,
+                hash=snapshot["hash"],
+                timestamp=str(snapshot["timestamp"]),
+            )
+
+        # Serialized data dump
         for vrp in self.vrps:
             yield SerializedDump(
                 type="vrp",
