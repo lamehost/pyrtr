@@ -83,8 +83,10 @@ class SnapshotDump(TypedDict):
     hash: str
     timestamp: str
 
+
 class DumpMetadata(TypedDict):
     """Data dump metadata (usually yielded as the first item of a dump)"""
+
     type: str
     version: int
     serial: int
@@ -94,6 +96,7 @@ class DumpMetadata(TypedDict):
 
 class SerializedDump(TypedDict):
     """Data dump for serialized VRPs and Router Keys"""
+
     type: str
     version: int
     serial: int
@@ -284,7 +287,7 @@ class Datasource(ABC):
     async def dump(self) -> AsyncGenerator[DumpMetadata | SnapshotDump | SerializedDump, None]:
         """
         Dumps the current data to JSON serializable format.
-        The first yielded dict contains the metadata of the dump, then snapshots follows, and the 
+        The first yielded dict contains the metadata of the dump, then snapshots follows, and the
         remaining dicts contain the serialized data encoded in base64.
 
         Yields:
