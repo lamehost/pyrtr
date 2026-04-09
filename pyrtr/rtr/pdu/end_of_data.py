@@ -3,7 +3,7 @@ Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.8
 """
 
 import struct
-from typing import TypedDict
+from typing import TypedDict, Literal, overload
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
@@ -253,6 +253,18 @@ def unserialize_v1(buffer: bytes, validate: bool = True) -> EndOfDataV1:
         retry=fields[6],
         expire=fields[7],
     )
+
+
+@overload
+def unserialize(
+    version: Literal[0], buffer: bytes, validate: bool = True
+) -> EndOfDataV0: ...  # NOSONAR
+
+
+@overload
+def unserialize(
+    version: Literal[1], buffer: bytes, validate: bool = True
+) -> EndOfDataV1: ...  # NOSONAR
 
 
 def unserialize(  # NOSONAR
