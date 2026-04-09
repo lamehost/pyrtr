@@ -12,7 +12,6 @@ from typing import Any, Self, override
 
 import msgpack  # pyright: ignore[reportMissingTypeStubs]
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -72,7 +71,7 @@ class KVDB(MutableMapping[bytes, Any]):
     def _execute(self, query: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
         if self._conn is None:
             raise ValueError("KVDB is closed. Use 'with' or call .open()")
-        
+
         if re.match(r"[a-z][a-z0-9_\-]+", self.table, re.IGNORECASE) is None:
             raise ValueError(f"Invalid table name: {self.table}")
 
