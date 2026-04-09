@@ -25,6 +25,8 @@ flake8 = "^7.3.0"
 isort = "^8.0.1"
 bandit = "^1.8.6"
 pylint = "^4.0.2"
+pytest = "^9.0.2"
+pytest-cov = "^7.1.0"
 
 [tool.poetry.scripts]
 pyrtr = "pyrtr.__main__:main"
