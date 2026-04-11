@@ -14,7 +14,7 @@ import aiohttp
 import orjson
 import xxhash
 
-from pyrtr.datasources.datasource import Data, Datasource
+from pyrtr.datasources.datasource import Data, Datasource, Serialized
 from pyrtr.datasources.rpki_client.kvdb import KVDB, KVDBView
 
 logger = logging.getLogger(__name__)
@@ -251,6 +251,115 @@ class RPKIClient(Datasource):
             pubkey = base64.b64decode(old_bgpsec_key["pubkey"])
             yield key, self.serialize_router_key(old_bgpsec_key["asn"], ski, pubkey, 0)
 
+    def _calculate_data_diffs_v0(
+        self,
+        new_snapshot_db_path: os.PathLike[str] | str,
+        old_snapshot_db_path: os.PathLike[str] | str,
+    ) -> Serialized:
+        """
+        Calculates the differences in the data between the old and the new JSON file and returns
+        the serialized diffs according to RTRv0.
+
+        Arguments:
+        ----------
+        new_snapshot_db_path: os.PathLike[str] | str
+            Path to the DB containing the new snapshot
+        old_snapshot_db_path: os.PathLike[str] | str
+            Path to the DB containing the old snapshot
+
+        Returns:
+        --------
+        Serialized: The serialized diffs.
+        """
+
+        # Read ROAs from disk
+        new_roas = {
+            key: ROA(value)
+            for key, value in KVDB(db_path=new_snapshot_db_path, table="roas_").items()
+        }
+        old_roas = {
+            key: ROA(value)
+            for key, value in KVDB(db_path=old_snapshot_db_path, table="roas_").items()
+        }
+
+        # Calculate ROA diffs
+        vrps = self._calculate_roa_diffs(old_roas=old_roas, new_roas=new_roas)
+
+        # Save new diffs to disk
+        with KVDB(db_path=old_snapshot_db_path, table="vrp_diffs_") as vrp_diffs:
+            for key, value in vrps:
+                vrp_diffs[key] = value
+
+        return {
+            "vrps": KVDBView(vrp_diffs.db_path, vrp_diffs.table),
+            "router_keys": [],
+        }
+
+    def _calculate_data_diffs_v1(
+        self,
+        new_snapshot_db_path: os.PathLike[str] | str,
+        old_snapshot_db_path: os.PathLike[str] | str,
+    ) -> Serialized:
+        """
+        Calculates the differences in the data between the old and the new JSON file and returns
+        the serialized diffs according to RTRv1.
+
+        Arguments:
+        ----------
+        new_snapshot_db_path: os.PathLike[str] | str
+            Path to the DB containing the new snapshot
+        old_snapshot_db_path: os.PathLike[str] | str
+            Path to the DB containing the old snapshot
+
+        Returns:
+        --------
+        Serialized: The serialized diffs.
+        """
+
+        # Read ROAs from disk
+        new_roas = {
+            key: ROA(value)
+            for key, value in KVDB(db_path=new_snapshot_db_path, table="roas_").items()
+        }
+        old_roas = {
+            key: ROA(value)
+            for key, value in KVDB(db_path=old_snapshot_db_path, table="roas_").items()
+        }
+
+        # Calculate ROA diffs
+        vrps = self._calculate_roa_diffs(old_roas=old_roas, new_roas=new_roas)
+
+        # Save new diffs to disk
+        with KVDB(db_path=old_snapshot_db_path, table="vrp_diffs_") as vrp_diffs:
+            for key, value in vrps:
+                vrp_diffs[key] = value
+
+        # Read BGPSec Keys from disk
+        new_bgpsec_keys = {
+            key: BGPSecKey(value)
+            for key, value in KVDB(db_path=new_snapshot_db_path, table="bgpsec_keys_").items()
+        }
+        old_bgpsec_keys = {
+            key: BGPSecKey(value)
+            for key, value in KVDB(db_path=old_snapshot_db_path, table="bgpsec_keys_").items()
+        }
+
+        # Calcuate BGPSec Keys diff
+        router_keys = self._calculate_bgpsec_key_diffs(
+            old_bgpsec_keys=old_bgpsec_keys,
+            new_bgpsec_keys=new_bgpsec_keys,
+        )
+
+        # Write diffs to disk
+        with KVDB(db_path=old_snapshot_db_path, table="router_key_diffs_") as router_key_diffs:
+            for key, value in router_keys:
+                router_key_diffs[key] = value
+
+        return {
+            "vrps": KVDBView(vrp_diffs.db_path, vrp_diffs.table),
+            "router_keys": KVDBView(router_key_diffs.db_path, router_key_diffs.table),
+        }
+
     async def _reduce_roas(self, roas: list[ROA]) -> dict[bytes, ROA]:
         """
         Reduces a list of ROAs into a dict of unique and valid ROAs.
@@ -439,7 +548,7 @@ class RPKIClient(Datasource):
         except (orjson.JSONDecodeError, KeyError) as error:  # pylint: disable=no-member
             raise ValueError(f"Unable to load the file: {error}") from error
 
-        # Check if the new and the current JSON are the same
+        # Check if the new and the current most recent JSON are the same
         try:
             if new_snapshot["hash"] == self.snapshots[self.serial]["hash"]:
                 # Delete new database
@@ -457,83 +566,20 @@ class RPKIClient(Datasource):
             # Do not waste CPU cycles if not needed
             match self.version:
                 case 0:
-                    new_roas = {
-                        key: ROA(value)
-                        for key, value in KVDB(
-                            db_path=new_snapshot["content"]["db_path"], table="roas_"
-                        ).items()
-                    }
-                    old_roas = {
-                        key: ROA(value)
-                        for key, value in KVDB(
-                            db_path=old_snapshot["content"]["db_path"], table="roas_"
-                        ).items()
-                    }
-                    vrps = self._calculate_roa_diffs(old_roas=old_roas, new_roas=new_roas)
-
-                    with KVDB(
-                        db_path=old_snapshot["content"]["db_path"], table="vrp_diffs_"
-                    ) as vrp_diffs:
-                        for key, value in vrps:
-                            vrp_diffs[key] = value
-
-                    old_snapshot["diffs"] = {
-                        "vrps": KVDBView(vrp_diffs.db_path, vrp_diffs.table),
-                        "router_keys": [],
-                    }
-                case 1:
-                    new_roas = {
-                        key: ROA(value)
-                        for key, value in KVDB(
-                            db_path=new_snapshot["content"]["db_path"], table="roas_"
-                        ).items()
-                    }
-                    old_roas = {
-                        key: ROA(value)
-                        for key, value in KVDB(
-                            db_path=old_snapshot["content"]["db_path"], table="roas_"
-                        ).items()
-                    }
-                    vrps = self._calculate_roa_diffs(old_roas=old_roas, new_roas=new_roas)
-
-                    with KVDB(
-                        db_path=old_snapshot["content"]["db_path"], table="vrp_diffs_"
-                    ) as vrp_diffs:
-                        for key, value in vrps:
-                            vrp_diffs[key] = value
-
-                    new_bgpsec_keys = {
-                        key: BGPSecKey(value)
-                        for key, value in KVDB(
-                            db_path=new_snapshot["content"]["db_path"], table="bgpsec_keys_"
-                        ).items()
-                    }
-                    old_bgpsec_keys = {
-                        key: BGPSecKey(value)
-                        for key, value in KVDB(
-                            db_path=old_snapshot["content"]["db_path"], table="bgpsec_keys_"
-                        ).items()
-                    }
-                    router_keys = self._calculate_bgpsec_key_diffs(
-                        old_bgpsec_keys=old_bgpsec_keys,
-                        new_bgpsec_keys=new_bgpsec_keys,
+                    # Update the snapshot
+                    old_snapshot["diffs"] = self._calculate_data_diffs_v0(
+                        new_snapshot["content"]["db_path"], old_snapshot["content"]["db_path"]
                     )
-
-                    with KVDB(
-                        db_path=old_snapshot["content"]["db_path"], table="router_key_diffs_"
-                    ) as router_key_diffs:
-                        for key, value in router_keys:
-                            router_key_diffs[key] = value
-
-                    old_snapshot["diffs"] = {
-                        "vrps": KVDBView(vrp_diffs.db_path, vrp_diffs.table),
-                        "router_keys": KVDBView(router_key_diffs.db_path, router_key_diffs.table),
-                    }
+                case 1:
+                    # Update the snapshot
+                    old_snapshot["diffs"] = self._calculate_data_diffs_v1(
+                        new_snapshot["content"]["db_path"], old_snapshot["content"]["db_path"]
+                    )
                 case _:
                     raise ValueError(f"Unsupported version number: {self.version}")
 
         # Serial is a property that only returns the max() key in self.snapthosts,
-        # so adding a new key in snapshots, also increases serial.
+        # so adding a new key to snapshots, also increases serial.
         self.snapshots[self.serial + 1] = new_snapshot
         self.last_update = new_snapshot["content"]["metadata"]["buildtime"]
 
@@ -551,8 +597,11 @@ class RPKIClient(Datasource):
         }
 
         # Remove orphaned databases
-        if not self.serial:
-            for file in os.scandir(self.cache_location):
+        for file in os.scandir(self.cache_location):
+            for snapshot in self.snapshots.values():
+                if os.path.basename(snapshot["content"]["db_path"]) in file.name:
+                    break
+            else:
                 if (
                     os.path.isfile(file)
                     and file.name.startswith("db_")
@@ -561,17 +610,3 @@ class RPKIClient(Datasource):
                     db_path = os.path.join(self.cache_location, file.name)
                     for filename in KVDB(db_path=db_path, table="").purge():
                         logger.debug("Purging file from cache: %s", filename)
-        else:
-            for file in os.scandir(self.cache_location):
-                for snapshot in self.snapshots.values():
-                    if os.path.basename(snapshot["content"]["db_path"]) in file.name:
-                        break
-                else:
-                    if (
-                        os.path.isfile(file)
-                        and file.name.startswith("db_")
-                        and file.name.endswith(f"_v{self.version}.sqlite")
-                    ):
-                        db_path = os.path.join(self.cache_location, file.name)
-                        for filename in KVDB(db_path=db_path, table="").purge():
-                            logger.debug("Purging file from cache: %s", filename)
