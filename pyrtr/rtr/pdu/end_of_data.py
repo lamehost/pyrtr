@@ -3,7 +3,7 @@ Implements https://datatracker.ietf.org/doc/html/rfc8210#section-5.8
 """
 
 import struct
-from typing import TypedDict, Literal, overload
+from typing import Literal, TypedDict, overload
 
 from .errors import CorruptDataError, UnsupportedProtocolVersionError
 
