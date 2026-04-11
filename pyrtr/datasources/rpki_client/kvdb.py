@@ -2,8 +2,8 @@
 Key/Value Database persisted through SQLite
 """
 
-import logging
 import glob
+import logging
 import os
 import re
 import sqlite3
