@@ -106,9 +106,25 @@ class SerializedDump(TypedDict):
 class Datasource(ABC):
     """
     Abstract Base Class that defines a data sources that can be passed to Cache and data_reloader().
+
+
+    Provides 3 abstract methods:
+      - parse: Parses data at `self.location` and returns Data
+      - purge: Deletes expired snapshots
+      - reload: Adds a new snapshot and recalculates diffs
+
+    `snapshots` is a dict whose keys are the RTR serial number and values are the `Data` for that
+    serial number
     """
 
-    def __init__(self, version: int, data_location: Any, cache_location: Any, expire: int = 7200):
+    def __init__(
+        self,
+        version: int,
+        data_location: Any,
+        cache_location: Any,
+        slurm_location: Any,
+        expire: int = 7200,
+    ):
         """
         Arguments:
         ----------
@@ -118,12 +134,15 @@ class Datasource(ABC):
             The location of the data. The actual type is implementation specific
         cache_location: Any
             The location of the cache directory. The actual type is implementation specific
+        slurm_location: Any
+            The location of the slurm data. The actual type is implementation specific
         expire: int
             When the data expires
         """
         self.version: int = version
         self.data_location: Any = data_location
         self.cache_location: Any = cache_location
+        self.slurm_location: Any = slurm_location
         self.expire: int = expire
 
         self.snapshots: dict[int, Data] = {}
@@ -177,6 +196,8 @@ class Datasource(ABC):
         """
         Parses data at `self.location` and returns Data
 
+        This method is *usually* invoked by `reload()`
+
         Returns:
         --------
         Data: The parsed Data
@@ -184,20 +205,29 @@ class Datasource(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def reload(self) -> bool:
+    async def purge(self) -> None:
         """
-        Reloads data and recalculates diffs
+        Deletes the items in `snapshots` whose `timestamp` is older than `expire`.
 
-        Returns:
-        --------
-        bool: True if the reload was succesfull, False otherwise
+        This method is usually invoked by `reload` and should:
+            1) Delete expired `snapshots`
+            2) Delete the data in `cache_location` that is not referenced by `snapshots`
         """
         raise NotImplementedError
 
     @abstractmethod
-    async def purge(self) -> None:
+    async def reload(self) -> bool:
         """
-        Deletes expired data copies
+        Adds a new snapshot and recalculates diffs
+
+        This method should:
+            1) Run `parse()`
+            3) Update the diffs in each of the items in `snapshots`
+            2) Add the output of parse() to `snapshots`
+
+        Returns:
+        --------
+        bool: True if the reload was succesfull, False otherwise
         """
         raise NotImplementedError
 
@@ -287,13 +317,13 @@ class Datasource(ABC):
     async def dump(self) -> AsyncGenerator[DumpMetadata | SnapshotDump | SerializedDump, None]:
         """
         Dumps the current data to JSON serializable format.
-        The first yielded dict contains the metadata of the dump, then snapshots follows, and the
-        remaining dicts contain the serialized data encoded in base64.
+        It yelds a dict with the metadata for the dump first, than the snapshots, and than again the
+        remaining dicts that contain the serialized data encoded in base64.
 
         Yields:
         -------
-        AsyncGeneratr[DumpMetadata | SnapshotDump | SerializedDump, None]: The metadata and data of
-        the data dumps
+        AsyncGeneratr[DumpMetadata | SnapshotDump | SerializedDump, None]: The metadata, the dump of
+        the snapshots and the dump of the data.
         """
 
         # Metadata dump
