@@ -64,4 +64,5 @@ target/
 .pylintrc
 .sonarlint/
 .vscode/
-cache
+cache/
+sample_data/
