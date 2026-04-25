@@ -2,17 +2,46 @@
 Implements the Abstract Base Class for the Datasource
 """
 
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from collections.abc import Collection
 from ipaddress import ip_network
-from typing import Any, AsyncGenerator, TypedDict
+from typing import Any, AsyncGenerator, Optional, TypedDict
 
-# from pyrtr import prometheus
 from pyrtr.rtr.pdu import ipv4_prefix, ipv6_prefix, router_key
 
 logger = logging.getLogger(__name__)
+
+
+class ROA(TypedDict):
+    """RPKI ROA"""
+
+    asn: int
+    prefix: str
+    maxLength: int
+    ta: str
+    expires: int
+
+
+class BGPSecKey(TypedDict):
+    """BGPSec key"""
+
+    asn: int
+    ski: str
+    pubkey: str
+    ta: str
+    expires: int
+
+
+class ASPA(TypedDict):
+    """ASPA object"""
+
+    customer_asid: int
+    expires: int
+    providers: list[int]
 
 
 class Serialized(TypedDict):
@@ -37,6 +66,8 @@ class Data(TypedDict):
 
     Keys:
     -----
+    hash: str
+        The hash representing the data,
     timestamp: float
         The unix timestamp the file has been created
     diffs: Serialized
@@ -122,7 +153,7 @@ class Datasource(ABC):
         version: int,
         data_location: Any,
         cache_location: Any,
-        slurm_location: Any,
+        slurm: Optional[Datasource] = None,
         expire: int = 7200,
     ):
         """
@@ -134,15 +165,16 @@ class Datasource(ABC):
             The location of the data. The actual type is implementation specific
         cache_location: Any
             The location of the cache directory. The actual type is implementation specific
-        slurm_location: Any
-            The location of the slurm data. The actual type is implementation specific
+        slurm: Optional[Datasource] = None
+            The slurm data source. The actual type is implementation specific.
+            Default: None
         expire: int
-            When the data expires
+            When the data expires. Default: 7200 seconds (2 hours)
         """
         self.version: int = version
         self.data_location: Any = data_location
         self.cache_location: Any = cache_location
-        self.slurm_location: Any = slurm_location
+        self.slurm: Optional[Datasource] = slurm
         self.expire: int = expire
 
         self.snapshots: dict[int, Data] = {}
@@ -190,6 +222,17 @@ class Datasource(ABC):
             return self.snapshots[self.serial]["serialized"]["router_keys"]
         except KeyError:
             return []
+
+    @property
+    def content(self) -> Any:
+        """
+        Returns the current content provided by the data source
+
+        Returns:
+        -------
+        Any: The content provided by the data source
+        """
+        return self.snapshots[self.serial]["content"]
 
     @abstractmethod
     async def parse(self) -> Data:
