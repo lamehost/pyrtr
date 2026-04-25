@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from pyrtr.datasources.rpki_client.kvdb import KVDB, KVDBView
+from pyrtr.kvdb import KVDB, KVDBView
 
 
 class TestKVDB(unittest.TestCase):
