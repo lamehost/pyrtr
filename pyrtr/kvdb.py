@@ -3,14 +3,14 @@ Key/Value Database persisted through SQLite
 """
 
 import glob
+import hmac
 import logging
 import os
+import pickle
 import re
 import sqlite3
 from collections.abc import Collection, Iterator, MutableMapping
 from typing import Any, Self, override
-
-import msgpack  # pyright: ignore[reportMissingTypeStubs]
 
 logger = logging.getLogger(__name__)
 
@@ -27,23 +27,31 @@ class KVDBView(Collection[Any]):
         SQL table name
     """
 
-    def __init__(self, db_path: os.PathLike[str] | str, table: str):
+    def __init__(
+        self,
+        db_path: os.PathLike[str] | str,
+        table: str,
+        encryption_key: bytes,
+        digest_method: str = "SHA512",
+    ) -> None:
         self.db_path = db_path
         self.table = table
+        self.encryption_key = encryption_key
+        self.digest_method = digest_method
 
     @override
     def __contains__(self, item: Any) -> bool:
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, self.encryption_key, self.digest_method) as kvdb:
             return kvdb.__contains__(item)
 
     @override
     def __iter__(self) -> Iterator[Any]:
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, self.encryption_key, self.digest_method) as kvdb:
             yield from kvdb.values()
 
     @override
     def __len__(self):
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, self.encryption_key, self.digest_method) as kvdb:
             return len(kvdb)
 
     @override
@@ -63,10 +71,18 @@ class KVDB(MutableMapping[bytes, Any]):
         SQL table name
     """
 
-    def __init__(self, db_path: os.PathLike[str] | str, table: str) -> None:
+    def __init__(
+        self,
+        db_path: os.PathLike[str] | str,
+        table: str,
+        encryption_key: bytes,
+        digest_method: str = "SHA512",
+    ) -> None:
         self.db_path = db_path
         self.table = table
-        self._conn = None
+        self.encryption_key = encryption_key
+        self.digest_method = digest_method
+        self._conn: sqlite3.Connection | None = None
 
     def _execute(self, query: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
         if self._conn is None:
@@ -112,7 +128,7 @@ class KVDB(MutableMapping[bytes, Any]):
         self.begin()
         self._execute(
             "CREATE TABLE IF NOT EXISTS `__TABLE__` ("
-            "  key BLOB PRIMARY KEY, unserialize BOOL, value BLOB"
+            "  key BLOB PRIMARY KEY, digest BLOB, value BLOB"
             ")"
         )
         self.commit()
@@ -156,6 +172,9 @@ class KVDB(MutableMapping[bytes, Any]):
         """
         return self.close()
 
+    def __digest(self, value: bytes) -> bytes:
+        return hmac.digest(self.encryption_key, value, self.digest_method)
+
     def __getitem__(self, key: bytes) -> Any:
         """
         Returns value of a key (requires a transtaction).
@@ -169,15 +188,15 @@ class KVDB(MutableMapping[bytes, Any]):
         --------
         Any: The value corresponding to the key
         """
-        cursor = self._execute("SELECT value, unserialize FROM `__TABLE__` WHERE key = ?", (key,))
+        cursor = self._execute("SELECT digest, value FROM `__TABLE__` WHERE key = ?", (key,))
         row = cursor.fetchone()
         if row is None:
             raise KeyError(key)
 
-        value, unserialize = row
-        if unserialize:
-            return msgpack.unpackb(value, raw=False)  # type: ignore
-        return value
+        digest, pickled = row
+        if self.__digest(pickled) != digest:
+            raise ValueError("Invalid digest")
+        return pickle.loads(pickled)
 
     def __setitem__(self, key: bytes, value: Any) -> None:
         """
@@ -190,18 +209,15 @@ class KVDB(MutableMapping[bytes, Any]):
         value: bytes
             The key value
         """
-        if isinstance(value, bytes):
-            unserialize = False
-        else:
-            try:
-                value = msgpack.packb(value, use_bin_type=True)  # type: ignore
-                unserialize = True
-            except msgpack.exceptions.PackValueError as error:
-                raise ValueError(f"Value cannot be serialized: {error}") from error
+        try:
+            pickled = pickle.dumps(value)
+            digest = self.__digest(pickled)
+        except TypeError as error:
+            raise ValueError(f"Value cannot be serialized: {error}") from error
 
         self._execute(
-            "INSERT OR REPLACE INTO `__TABLE__` (key, unserialize, value) VALUES (?, ?, ?)",
-            (key, unserialize, value),
+            "INSERT OR REPLACE INTO `__TABLE__` (key, digest, value) VALUES (?, ?, ?)",
+            (key, digest, pickled),
         )
 
     def __delitem__(self, key: bytes) -> None:
