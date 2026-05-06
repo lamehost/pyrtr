@@ -36,7 +36,7 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 |  HTTP_PORT | Port to bind the HTTP server to. Use False to disable the HTTP server | 8080 |
 |  DATASOURCE | Datasource type to use (see below) | RPKICLIENT |
 |  DATA_LOCATION |  Path to the RPKI-client JSON file | rpki_client.json |
-|  SLURM_LOCATION | Path to the SLURM JSON file ([file format](https://datatracker.ietf.org/doc/html/rfc8416.html#section-3.5)) | slurm.json |
+|  SLURM_LOCATION | Path to the SLURM JSON file | slurm.json |
 |  CACHE_LOCATION | Path to the temporary cache directory | cache |
 |  RELOAD | The amount of seconds after which the RPKIclient JSON file is realoaded | 900 |
 |  REFRESH |  RTR Refresh Interval in seconds * | 3600 |
@@ -47,6 +47,10 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 
 ## Datasources
 pyRTR is designed to support multiple Datasources. The following is a list of those that are currently supported
+
+### SLURM
+SLURM is a special datasource that loads a SLURM file [formatted as defined by RFC8416](https://datatracker.ietf.org/doc/html/rfc8416.html#section-3.5).
+**Location**: Can be either local path or HTTP URL
 
 ### RPKI Client
 Loads the RPKI Client JSON file.  
