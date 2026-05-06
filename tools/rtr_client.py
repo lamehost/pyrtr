@@ -7,7 +7,7 @@ import asyncio
 import functools
 import ipaddress
 import logging
-from typing import Any, Callable, Self
+from typing import Any, Callable
 
 import orjson
 
@@ -21,7 +21,7 @@ from pyrtr.rtr.pdu import (
     serial_notify,
 )
 from pyrtr.rtr.pdu.errors import InternalError
-from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker
+from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker, Speaker
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ class Client(RTRSpeaker):
     def __init__(
         self,
         *,
-        connect_callback: Callable[[Self], None] | None = None,
-        disconnect_callback: Callable[[Self], None] | None = None,
+        connect_callback: Callable[[Speaker], None] | None = None,
+        disconnect_callback: Callable[[Speaker], None] | None = None,
         version: int = 1,
     ):
         """
@@ -43,16 +43,14 @@ class Client(RTRSpeaker):
         ----------
         session: int
             The RTR session ID
-        connect_callback: Callable[[Self], None] | None = None
+        connect_callback: Callable[[Speaker], None] | None = None
             The method executed after the connection is established
-        disconnect_callback: Callable[[Self], None] | None = None
+        disconnect_callback: Callable[[Speaker], None] | None = None
             The method executed after the connection is terminated
         version: int
             The RTR version number. Default: 1
         """
-        super().__init__()
-        self.connect_callback = connect_callback
-        self.disconnect_callback = disconnect_callback
+        super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
         self.version = version
 
     def handle_pdu(self, header: RTRHeader, data: bytes) -> None:
@@ -78,7 +76,12 @@ class Client(RTRSpeaker):
                 self.handle_router_key(data)
             case error_report.TYPE:
                 logger.info("Error report PDU received from %s", self.remote)
-                self.raise_on_error_report(data)
+                try:
+                    self.handle_error_report(data)
+                finally:
+                    # Always close the connection after receiving an error report
+                    if self.transport is not None:
+                        self.transport.close()
             case serial_notify.TYPE:
                 logger.info("Ignoring Serial Notify")
             case _:
@@ -175,7 +178,7 @@ class Client(RTRSpeaker):
         )
 
 
-def client_connected_callback(client: RTRSpeaker):
+def client_connected_callback(client: Speaker):
     """
     Triggered when client connects to the Cache. Sends Reset Query.
 
@@ -185,10 +188,14 @@ def client_connected_callback(client: RTRSpeaker):
         The Cache the client is connected to
     """
     logger.info("Client connected")
+
+    if not isinstance(client, RTRSpeaker):
+        raise TypeError("Unable to write reset query to a non RTRSpeaker.")
+
     client.write_reset_query()
 
 
-def client_disconnected_callback(_: RTRSpeaker, awaitable: asyncio.Future[Any]):
+def client_disconnected_callback(_: Speaker, awaitable: asyncio.Future[Any]):
     """
     Triggered when client disconnects from the Cache. Sends Reset Query.
 
