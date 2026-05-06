@@ -13,24 +13,40 @@ import asyncio
 import logging
 import os
 from base64 import b64decode
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from ipaddress import ip_network
-from typing import Any, Generator, NotRequired, Optional, TypedDict, override
-from urllib.parse import urlparse
+from typing import Generator, NotRequired, Optional, TypedDict, override
 
-import aiofiles
-import aiohttp
 import orjson
 import xxhash
 
-from pyrtr.datasources.datasource import ROA, BGPSecKey, Data, Datasource
+from pyrtr.datasources.datasource import (
+    ROA,
+    BGPSecFilter,
+    BGPSecKey,
+    Data,
+    PrefixFilter,
+    SLURMDatasource,
+)
 from pyrtr.kvdb import KVDB, KVDBView
 
 logger = logging.getLogger(__name__)
 
 
 class JSONPrefixFilter(TypedDict):
-    """Prefix filter"""
+    """
+    SLURM Prefix filter found in the JSON file as defined in
+    https://www.rfc-editor.org/rfc/rfc8416.html#section-3.3.1 .
+
+    Keys:
+    -----
+    prefix: NotRequired[str]
+        The prefix to filter. It can be missing. In that case is set to None during parsing
+    asn: NotRequired[int]
+        The ASN to filter. It can be missing. In that case is set to None during parsing
+    comment: NotRequired[str]
+        An optional comment for the filter
+    """
 
     prefix: NotRequired[str]
     asn: NotRequired[int]
@@ -38,7 +54,19 @@ class JSONPrefixFilter(TypedDict):
 
 
 class JSONBGPSecFilter(TypedDict):
-    """BGPSec Key filter"""
+    """
+    SLURM BGPSec Key filter found in the JSON file as defined in
+    https://www.rfc-editor.org/rfc/rfc8416.html#section-3.3.2 .
+
+    Keys:
+    -----
+    SKI: NotRequired[str]
+        The SKI to filter. It can be missing. In that case is set to None during parsing
+    asn: NotRequired[int]
+        The ASN to filter. It can be missing. In that case is set to None during parsing
+    comment: NotRequired[str]
+        An optional comment for the filter
+    """
 
     asn: NotRequired[int]
     SKI: NotRequired[str]
@@ -46,7 +74,22 @@ class JSONBGPSecFilter(TypedDict):
 
 
 class JSONPrefixAssertion(TypedDict):
-    """Prefix assertion"""
+    """
+    SLURM BGP Prefix Assertion found in the JSON file as defined in
+    https://www.rfc-editor.org/rfc/rfc8416.html#section-3.4.1 .
+
+    Keys:
+    -----
+    prefix: str
+        The prefix in the assertion
+    asn: str
+        The ASN in the assertion
+    maxPrefixLength: NotRequired[int]
+        The maximum prefix length of the assertion. It can be missing. In that case is set to
+        the lentgh of the prefix during parsing
+    comment: NotRequired[str]
+        An optional comment for the filter
+    """
 
     prefix: str
     asn: int
@@ -85,21 +128,6 @@ class JSONFile(TypedDict):
     locallyAddedAssertions: JSONLocallyAddedAssertions
 
 
-class PrefixFilter(TypedDict):
-    """Prefix filter"""
-
-    network: Optional[int]
-    broadcast: Optional[int]
-    asn: Optional[int]
-
-
-class BGPSecFilter(TypedDict):
-    """BGPSec Key filter"""
-
-    asn: Optional[int]
-    ski: Optional[bytes]
-
-
 class JSONContent(TypedDict):
     """Defines the keys and values in for the content field"""
 
@@ -112,79 +140,117 @@ class JSON(Data):
     content: JSONContent
 
 
-class SLURM(Datasource):
+class SLURM(SLURMDatasource):
     """SLURM datasource"""
 
     @override
     def __init__(
         self,
+        *,
         version: int,
-        data_location: Any,
-        cache_location: Any,
+        data_location: str | os.PathLike[str],
+        cache_location: str | os.PathLike[str],
+        expire: int = 7200,
+        encryption_key: Optional[bytes] | None = None,
     ):
         """
         Initialize the SLURM datasource
-        :param version: Version of the datasource
-        :param data_location: Location of the data
-        :param cache_location: Location of the cache
+
+        Arguments:
+        ----------
+        version: int
+            Version of the datasource
+        data_location: str
+            Location of the data. It can be either a local path or an URL
+        cache_location: str
+            Location of the cache. In can be either a local path or an URL
+        expire: int
+            Expiration time for the snapshots in seconds (default: 7200)
+        encryption_key: Optional[bytes]
+            The encryption key for the database (default: None)
         """
         super().__init__(
-            version=version, data_location=data_location, cache_location=cache_location
+            version=version,
+            data_location=data_location,
+            cache_location=cache_location,
+            expire=expire,
         )
 
         self.snapshots: dict[int, Data]
+        if encryption_key is None:
+            encryption_key = b""
+            logger.warning("No encryption key provided for SLURM. Using empty key.")
+        self.encryption_key = encryption_key
 
     @property
     def prefix_filters(self) -> Generator[PrefixFilter, None, None]:
         """
         Generator that yields prefix filters from the most recent snapshot.
         """
-        for prefix_filter in KVDBView(
-            self.snapshots[self.serial]["content"]["db_path"], "prefix_fiters_"
-        ):
-            prefix_filter["prefix"] = ip_network(prefix_filter["prefix"])
-            yield prefix_filter
+        try:
+            for prefix_filter in KVDBView(
+                self.snapshots[self.serial]["content"]["db_path"],
+                "prefix_fiters_",
+                self.encryption_key,
+            ):
+                if prefix_filter["prefix"] is not None:
+                    prefix_filter["prefix"] = ip_network(prefix_filter["prefix"])
+                    yield prefix_filter
+        except KeyError:
+            logger.info(
+                "No prefix filters found in the SLURM snapshot %d for V%d",
+                self.serial,
+                self.version,
+            )
 
     @property
     def bgpsec_filters(self) -> Generator[BGPSecFilter, None, None]:
         """
         Generator that yields BGPSec Key filters from the most recent snapshot.
         """
-        for bgpsec_filter in KVDBView(
-            self.snapshots[self.serial]["content"]["db_path"], "bgpsec_filters_"
-        ):
-            bgpsec_filter["ski"] = b64decode(bgpsec_filter["ski"])
-            yield bgpsec_filter
+        try:
+            for bgpsec_filter in KVDBView(
+                self.snapshots[self.serial]["content"]["db_path"],
+                "bgpsec_filters_",
+                self.encryption_key,
+            ):
+                if bgpsec_filter["ski"] is not None:
+                    bgpsec_filter["ski"] = b64decode(bgpsec_filter["ski"])
+                yield bgpsec_filter
+        except KeyError:
+            logger.info(
+                "No BGPSec Key filters found in the SLURM snapshot %d for V%d",
+                self.serial,
+                self.version,
+            )
 
     @property
-    def prefix_assertions(self) -> Generator[ROA, None, None]:
+    def roas(self) -> Generator[ROA, None, None]:
         """
-        Generator that yields ROAs from the most recent snapshot."""
-        yield from KVDBView(self.snapshots[self.serial]["content"]["db_path"], "roas")
+        Generator that yields ROAs from the most recent snapshot.
+        """
+        try:
+            yield from KVDBView(
+                self.snapshots[self.serial]["content"]["db_path"], "roas_", self.encryption_key
+            )
+        except KeyError:
+            logger.info("No ROAs found in the SLURM snapshot %d for V%d", self.serial, self.version)
 
     @property
-    def bgpsec_assertions(self) -> Generator[BGPSecKey, None, None]:
+    def bgpsec_keys(self) -> Generator[BGPSecKey, None, None]:
         """
         Generator that yields BGPSec Keys from the most recent snapshot.
         """
-        yield from KVDBView(self.snapshots[self.serial]["content"]["db_path"], "bgpsec_keys_")
-
-    async def _read_json_file(self) -> bytes:
-        """
-        Reads the JSON file either locally or remotely if self.location is a URL
-
-        Returns:
-        --------
-        bytes: The content of the JSON file
-        """
-        # Test if the `data_location` is a URL
-        if urlparse(str(self.data_location)).scheme in ("http", "https"):
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.data_location) as response:
-                    return (await response.text()).encode("utf-8")
-        else:
-            async with aiofiles.open(self.data_location, mode="rb") as file:
-                return await file.read()
+        try:
+            yield from KVDBView(
+                self.snapshots[self.serial]["content"]["db_path"],
+                "bgpsec_keys_",
+                self.encryption_key,
+            )
+        except KeyError:
+            logger.info(
+                "No BGPSec Keys found in the SLURM snapshot %d for V%d", self.serial, self.version
+            )
 
     async def _parse_prefix_filters(
         self, prefix_filters: list[JSONPrefixFilter]
@@ -205,13 +271,12 @@ class SLURM(Datasource):
         reduced_prefix_filters: dict[bytes, PrefixFilter] = {}
         for prefix_filter in prefix_filters:
             # Set baseline object
-            reduced_prefix_filter: PrefixFilter = {"network": None, "broadcast": None, "asn": None}
+            reduced_prefix_filter: PrefixFilter = {"asn": None, "prefix": None}
 
             # Normalize values
             try:
-                prefix = ip_network(prefix_filter["prefix"]) # type: ignore
-                reduced_prefix_filter["network"] = int(prefix.network_address)
-                reduced_prefix_filter["broadcast"] = int(prefix.broadcast_address)
+                prefix = ip_network(prefix_filter["prefix"])  # type: ignore
+                reduced_prefix_filter["prefix"] = prefix
             except KeyError:
                 pass
 
@@ -222,10 +287,7 @@ class SLURM(Datasource):
 
             # This mean "if either `asn` or `prefix` is not None"
             if any(reduced_prefix_filter.values()):
-                key = (
-                    f"{reduced_prefix_filter['network']}"
-                    f"|{reduced_prefix_filter['broadcast']}"
-                    f"|{reduced_prefix_filter['asn']}").encode(
+                key = (f"{reduced_prefix_filter['prefix']}|{reduced_prefix_filter['asn']}").encode(
                     "utf-8"
                 )
 
@@ -258,7 +320,7 @@ class SLURM(Datasource):
 
             # Normalize values
             try:
-                bgpsec_filter["ski"] = json_bgpsec_filter["SKI"]  # type: ignore
+                bgpsec_filter["ski"] = json_bgpsec_filter["SKI"].encode("utf-8")  # type: ignore
             except KeyError:
                 pass
 
@@ -269,7 +331,8 @@ class SLURM(Datasource):
 
             # This mean "if either `asn` or `prefix` is not None"
             if any(bgpsec_filter.values()):
-                key = (f"{bgpsec_filter['ski']}|{bgpsec_filter['asn']}").encode("utf-8")
+                bgpsec_filter_ski = b"" if bgpsec_filter["ski"] is None else bgpsec_filter["ski"]
+                key = b"|".join([bgpsec_filter_ski, str(bgpsec_filter["asn"]).encode("utf-8")])
 
                 bgpsec_filters[key] = bgpsec_filter
 
@@ -290,9 +353,12 @@ class SLURM(Datasource):
 
         Returns:
         --------
-        dict[bytes, ROA]: Dictionary of ROA objects, where the key is a string in the format
-        "asn|prefix|maxLength"
+        dict[bytes, ROA]: Dictionary of ROA objects, where the key is a string in the
+            format"asn|prefix|maxLength"
         """
+        expires_datetime = timedelta(seconds=self.expire) + datetime.now(timezone.utc)
+        expires = int(expires_datetime.timestamp())
+
         roas: dict[bytes, ROA] = {}
         for json_prefix_assertion in json_prefix_assertions:
             try:
@@ -302,10 +368,10 @@ class SLURM(Datasource):
 
             roa: ROA = {
                 "asn": json_prefix_assertion["asn"],
-                "prefix": json_prefix_assertion["prefix"],
+                "prefix": ip_network(json_prefix_assertion["prefix"]),
                 "maxLength": max_length,
                 "ta": "SLURM",
-                "expires": 0,
+                "expires": expires,
             }
 
             key = (f'{roa["asn"]}|{roa["prefix"]}|{roa["maxLength"]}').encode("utf-8")
@@ -330,20 +396,23 @@ class SLURM(Datasource):
         dict[bytes, BGPSecKey]: Dictionary of BGPSecKey objects, where the key is a string in the
         format "asn|ski|pubkey"
         """
+        expires_datetime = timedelta(seconds=self.expire) + datetime.now(timezone.utc)
+        expires = int(expires_datetime.timestamp())
+
         bgpsec_keys: dict[bytes, BGPSecKey] = {}
         for json_bgpsec_key in json_bgpsec_keys:
             reduced_bgpsec_key: BGPSecKey = {
                 "asn": json_bgpsec_key["asn"],
-                "pubkey": json_bgpsec_key["routerPublicKey"],
-                "ski": json_bgpsec_key["SKI"],
-                "expires": 0,
+                "pubkey": b64decode(json_bgpsec_key["routerPublicKey"]),
+                "ski": b64decode(json_bgpsec_key["SKI"]),
+                "expires": expires,
                 "ta": "SLURM",
             }
 
             key = (
-                f'{reduced_bgpsec_key["asn"]}'
-                f'|{reduced_bgpsec_key["ski"]}'
-                f'|{reduced_bgpsec_key["pubkey"]}'
+                f"{json_bgpsec_key['asn']}|"
+                f"{json_bgpsec_key['SKI'].upper()}|"
+                f"{json_bgpsec_key['routerPublicKey'].upper()}"
             ).encode("utf-8")
             bgpsec_keys[key] = reduced_bgpsec_key
             await asyncio.sleep(0)
@@ -362,7 +431,7 @@ class SLURM(Datasource):
         logger.debug("Parsing the JSON file")
 
         # Read the JSON file
-        data: bytes = await self._read_json_file()
+        data: bytes = await self.read_json_file()
         json_file: JSONFile = orjson.loads(data)  # pylint: disable=no-member
 
         # Generate the database path string
@@ -414,7 +483,9 @@ class SLURM(Datasource):
         ).hexdigest()
 
         # Write full dumps
-        with KVDB(db_path=db_path, table="prefix_fiters_") as prefix_fiters_db:
+        with KVDB(
+            db_path=db_path, table="prefix_fiters_", encryption_key=self.encryption_key
+        ) as prefix_fiters_db:
             prefix_fiters_db.create_table()
             try:
                 prefix_fiters_db.begin()
@@ -424,7 +495,7 @@ class SLURM(Datasource):
             finally:
                 prefix_fiters_db.commit()
 
-        with KVDB(db_path=db_path, table="roas_") as roas_db:
+        with KVDB(db_path=db_path, table="roas_", encryption_key=self.encryption_key) as roas_db:
             roas_db.create_table()
             try:
                 roas_db.begin()
@@ -434,7 +505,9 @@ class SLURM(Datasource):
             finally:
                 roas_db.commit()
 
-        with KVDB(db_path=db_path, table="bgpsec_filters_") as bgpsec_filters_db:
+        with KVDB(
+            db_path=db_path, table="bgpsec_filters_", encryption_key=self.encryption_key
+        ) as bgpsec_filters_db:
             bgpsec_filters_db.create_table()
             try:
                 bgpsec_filters_db.begin()
@@ -444,7 +517,9 @@ class SLURM(Datasource):
             finally:
                 bgpsec_filters_db.commit()
 
-        with KVDB(db_path=db_path, table="bgpsec_keys_") as bgpsec_keys_db:
+        with KVDB(
+            db_path=db_path, table="bgpsec_keys_", encryption_key=self.encryption_key
+        ) as bgpsec_keys_db:
             bgpsec_keys_db.create_table()
             try:
                 bgpsec_keys_db.begin()
@@ -456,10 +531,8 @@ class SLURM(Datasource):
 
         return {
             "content": {"db_path": db_path},
-            "diffs": {"vrps": [], "router_keys": []},
-            "serialized": {"vrps": [], "router_keys": []},
             "hash": json_hash,
-            "timestamp": 0.0,
+            "timestamp": datetime.now(timezone.utc).timestamp(),
         }
 
     @override
@@ -489,7 +562,11 @@ class SLURM(Datasource):
             if new_snapshot["hash"] == self.snapshots[self.serial]["hash"]:
                 # Delete new database
                 try:
-                    KVDB(db_path=new_snapshot["content"]["db_path"], table="").purge()
+                    KVDB(
+                        db_path=new_snapshot["content"]["db_path"],
+                        table="",
+                        encryption_key=self.encryption_key,
+                    ).purge()
                 except (FileExistsError, FileNotFoundError):
                     pass
 
@@ -509,22 +586,27 @@ class SLURM(Datasource):
     @override
     async def purge(self) -> None:
         """
-        Purge stale databases.
+        Purges all the databases but he last.
         """
+        try:
+            current_snapshot_file_name = os.path.basename(
+                self.snapshots[self.serial]["content"]["db_path"]
+            )
+        except KeyError:
+            current_snapshot_file_name = None
+
         # Remove stale databases
         for file in os.scandir(self.cache_location):
-            try:
-                snapshot = self.snapshots[self.serial]
-            except KeyError:
-                continue
             if (
-                os.path.basename(snapshot["content"]["db_path"]) != file.name
+                current_snapshot_file_name != file.name
                 and os.path.isfile(file)
-                and file.name.startswith("db_")
+                and file.name.startswith("slurm_")
                 and file.name.endswith(f"_v{self.version}.sqlite")
             ):
                 db_path = os.path.join(self.cache_location, file.name)
-                for filename in KVDB(db_path=db_path, table="").purge():
+                for filename in KVDB(
+                    db_path=db_path, table="", encryption_key=self.encryption_key
+                ).purge():
                     logger.debug("Purging SLURM file from cache: %s", filename)
 
             await asyncio.sleep(0)

@@ -2,14 +2,16 @@
 Defines the RTR protocol sequence for the RTR Cache
 """
 
+from __future__ import annotations
+
 import logging
-from asyncio import Transport
-from typing import Callable, Self
+from asyncio import BaseTransport
+from typing import Callable
 
 from typing_extensions import override
 
-from pyrtr.datasources import Datasource
-from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker
+from pyrtr.datasources import RPKIDatasource
+from pyrtr.rtr.speaker import RTRHeader, RTRSpeaker, Speaker
 
 from .pdu import (
     error_report,
@@ -35,10 +37,10 @@ class Cache(RTRSpeaker):
     def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
-        connect_callback: Callable[[Self], None] | None = None,
-        disconnect_callback: Callable[[Self], None] | None = None,
+        connect_callback: Callable[[Speaker], None] | None = None,
+        disconnect_callback: Callable[[Speaker], None] | None = None,
         sessions: dict[int, int],
-        datasources: dict[int, Datasource],
+        datasources: dict[int, RPKIDatasource],
         refresh: int = 3600,
         retry: int = 600,
         expire: int = 7200,
@@ -48,12 +50,12 @@ class Cache(RTRSpeaker):
         ----------
         session: int
             The RTR session ID
-        connect_callback: Callable[[Self], None] | None = None
+        connect_callback: Callable[[Speaker], None] | None = None
             The method executed after the connection is established
-        disconnect_callback:  Callable[[Self], None] | None = None
+        disconnect_callback:  Callable[[Speaker], None] | None = None
             The method executed after the connection is terminated
-        datasources: dict[int, Datasource]:
-            The Datasource instances
+        datasources: dict[int, RPKIDatasource]:
+            The RPKI Datasource instances
         refresh: int
             Refresh Interval in seconds. Default: 3600
         retry: int
@@ -64,7 +66,7 @@ class Cache(RTRSpeaker):
 
         self.sessions: dict[int, int] = sessions
         self.datasources = datasources
-        self.datasource: Datasource | None = None
+        self.datasource: RPKIDatasource | None = None
 
         self.refresh = refresh
         self.retry = retry
@@ -73,7 +75,7 @@ class Cache(RTRSpeaker):
         super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
 
     @override
-    def connection_made(self, transport: Transport) -> None:
+    def connection_made(self, transport: BaseTransport) -> None:
         super().connection_made(transport)
 
         logger.info("New client connected: %s", self.remote)

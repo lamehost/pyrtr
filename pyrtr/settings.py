@@ -2,11 +2,10 @@
 
 from enum import Enum
 from ipaddress import IPv4Address, IPv6Address
-from os import PathLike
 from typing import Annotated, Self
 
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, CliApp
 
 
 class LogLevelEnums(str, Enum):
@@ -30,8 +29,10 @@ class DatasourceEnums(str, Enum):
     RPKICLIENT = "RPKICLIENT"
 
 
-class Settings(BaseSettings):
-    """Application settings parser"""
+class Settings(BaseSettings, cli_parse_args=True, cli_prog_name="pyrtr"):
+    """
+    Resource Public Key Infrastructure (RPKI) to Router Protocol Version 1 cache written in Python.
+    """
 
     LOGLEVEL: LogLevelEnums = LogLevelEnums.INFO
 
@@ -39,8 +40,10 @@ class Settings(BaseSettings):
     RTR_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8323
     HTTP_PORT: Annotated[int, Field(gt=-1, lt=65536)] = 8080
     DATASOURCE: DatasourceEnums = DatasourceEnums.RPKICLIENT
-    DATA_LOCATION: str | None = "json"
-    CACHE_LOCATION: str | PathLike[str] | None = "./cache"
+    DATA_LOCATION: str | None = "rpki_client.json"
+    SLURM_LOCATION: str | None = "slurm.json"
+    CACHE_LOCATION: str | None = "cache"
+    DISABLE_CACHE_ENCRYPTION: bool = False
     RELOAD: Annotated[int, Field(gt=29, lt=3601)] = 900
 
     # https://datatracker.ietf.org/doc/html/rfc8210#section-6
@@ -56,3 +59,12 @@ class Settings(BaseSettings):
         if self.EXPIRE <= self.REFRESH or self.EXPIRE <= self.RETRY:
             raise ValueError("EXPIRE interval must be larger than either REFRESH or RETRY")
         return self
+
+    def cli_cmd(self) -> None:
+        """
+        Defines the CLI command for the application
+        """
+        # Will print help for the current command or subcommand instance.
+        CliApp.print_help(self)
+        # Will return formatted help for the current command or subcommand instance.
+        CliApp.format_help(self)

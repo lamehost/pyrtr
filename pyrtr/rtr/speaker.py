@@ -2,13 +2,16 @@
 Implements the Abstract Base Class for the RTR speaker
 """
 
+from __future__ import annotations
+
 import asyncio
+import itertools
 import logging
 import socket
 import struct
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from typing import Callable, Collection, Self, TypedDict
+from typing import Callable, Collection, TypedDict
 from uuid import uuid4
 
 from typing_extensions import override
@@ -78,28 +81,27 @@ class Speaker(asyncio.BufferedProtocol, ABC):
     def __init__(
         self,
         *,
-        connect_callback: Callable[[Self], None] | None = None,
-        disconnect_callback: Callable[[Self], None] | None = None,
+        connect_callback: Callable[[Speaker], None] | None = None,
+        disconnect_callback: Callable[[Speaker], None] | None = None,
     ):
-        self.connect_callback: Callable[[Self], None] | None = connect_callback
-        self.disconnect_callback: Callable[[Self], None] | None = disconnect_callback
+        self.connect_callback: Callable[[Speaker], None] | None = connect_callback
+        self.disconnect_callback: Callable[[Speaker], None] | None = disconnect_callback
 
         self._data_length: int = 0
         self._buffer: memoryview = memoryview(bytearray(524_288))
 
         self.remote: str | None = None
-        self.transport: asyncio.Transport | None = None
+        self.transport: asyncio.BaseTransport | None = None
         self.transport_socket: socket.socket | None = None
 
-    def connection_made(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, transport: asyncio.Transport
-    ) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """
         Called when a connection is established
 
-        transport: asyncio.Transport
+        transport: asyncio.BaseTransport
              Transport representing the connection.
         """
+
         # Find the remote socket data
         try:
             host, port = transport.get_extra_info("peername")
@@ -251,15 +253,15 @@ class RTRSpeaker(Speaker):
     def __init__(
         self,
         *,
-        connect_callback: Callable[[Self], None] | None = None,
-        disconnect_callback: Callable[[Self], None] | None = None,
+        connect_callback: Callable[[Speaker], None] | None = None,
+        disconnect_callback: Callable[[Speaker], None] | None = None,
     ):
         """
         Arguments:
         ----------
-        connect_callback: Callable[[Self], None] | None = None
+        connect_callback: Callable[[Speaker], None] | None = None
             The method executed after the connection is established
-        disconnect_callback: Callable[[Self], None] | None = None
+        disconnect_callback: Callable[[Speaker], None] | None = None
             The method executed after the connection is terminated
         """
         super().__init__(connect_callback=connect_callback, disconnect_callback=disconnect_callback)
@@ -327,8 +329,14 @@ class RTRSpeaker(Speaker):
         data: bytes
             The serialized PDU to send
         """
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
         if self.transport is None:
-            raise BrokenPipeError("Transport is not ready")  # NOSONAR
+            raise BrokenPipeError("Transport is not ready")
+
+        if not isinstance(self.transport, asyncio.Transport):
+            raise TypeError("Unable to write to a non writable transport")
 
         self.transport.write(data)
 
@@ -392,11 +400,20 @@ class RTRSpeaker(Speaker):
         vrps: list[bytes]
             List of serialized VRPs
         """
+        if self.version is None:
+            raise InternalError("Inconsistent version state.")
+
         if self.transport is None:
             raise BrokenPipeError("Transport is not ready")
 
+        if not isinstance(self.transport, asyncio.Transport):
+            raise TypeError("Unable to write to a non writable transport")
+
         try:
-            self.transport.writelines(vrps)
+            # Write router keys in batches to avoid overwhelming the transport buffer
+            for batch in itertools.batched(vrps, 1000):
+                if not self.transport.is_closing():
+                    self.transport.writelines(batch)
         except AssertionError:
             pass
 
@@ -457,8 +474,14 @@ class RTRSpeaker(Speaker):
         if self.transport is None:
             raise BrokenPipeError("Transport is not ready")
 
+        if not isinstance(self.transport, asyncio.Transport):
+            raise TypeError("Unable to write to a non writable transport")
+
         try:
-            self.transport.writelines(router_keys)
+            # Write router keys in batches to avoid overwhelming the transport buffer
+            for batch in itertools.batched(router_keys, 1000):
+                if not self.transport.is_closing():
+                    self.transport.writelines(batch)
         except AssertionError:
             pass
 
