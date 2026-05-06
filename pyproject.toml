@@ -27,6 +27,7 @@ bandit = "^1.8.6"
 pylint = "^4.0.2"
 pytest = "^9.0.2"
 pytest-cov = "^7.1.0"
+mypy = "^1.20.2"
 
 [tool.poetry.scripts]
 pyrtr = "pyrtr.__main__:main"
@@ -39,3 +40,4 @@ orjson = "^3.11.5"
 aiofiles = "^25.1.0"
 xxhash = "^3.6.0"
 msgpack = "^1.1.2"
+types-aiofiles = "^25.1.0.20260409"
