@@ -5,8 +5,9 @@
 
 ## Features
  - RPKI-client backend
- - HTTP health and connected clients endpoints
- - Prometheus metrics
+ - HTTP health and connected clients endpoints (some endpoints might be broken)
+ - SLURM
+ - Prometheus metrics (largely TODO)
 
 ## Tested with
  - FRR
@@ -34,7 +35,9 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 |  RTR_PORT |  Port to bind the RTR server to. Use False to disable the Cache | 8323 |
 |  HTTP_PORT | Port to bind the HTTP server to. Use False to disable the HTTP server | 8080 |
 |  DATASOURCE | Datasource type to use (see below) | RPKICLIENT |
-|  LOCATION |  Path to the RPKI-client JSON file | json |
+|  DATA_LOCATION |  Path to the RPKI-client JSON file | rpki_client.json |
+|  SLURM_LOCATION | Path to the SLURM JSON file ([file format](https://datatracker.ietf.org/doc/html/rfc8416.html#section-3.5)) | slurm.json |
+|  CACHE_LOCATION | Path to the temporary cache directory | cache |
 |  RELOAD | The amount of seconds after which the RPKIclient JSON file is realoaded | 900 |
 |  REFRESH |  RTR Refresh Interval in seconds * | 3600 |
 |  RETRY |  RTR Retry Interval in seconds * | 600 |
