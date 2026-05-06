@@ -26,14 +26,14 @@ class TestKVDB(unittest.TestCase):
 
     def test_init(self):
         """Test KVDB initialization"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         self.assertEqual(kvdb.db_path, self.db_path)
         self.assertEqual(kvdb.table, self.table)
         self.assertIsNone(kvdb._conn)  # pyright: ignore[reportPrivateUsage]
 
     def test_open_creates_connection(self):
         """Test that open() creates a database connection"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         result = kvdb.open()
         self.assertIsNotNone(kvdb._conn)  # pyright: ignore[reportPrivateUsage]
         self.assertIsInstance(result, KVDB)
@@ -42,7 +42,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_open_idempotent(self):
         """Test that calling open() multiple times uses same connection"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         kvdb.open()
         first_conn = kvdb._conn  # pyright: ignore[reportPrivateUsage]
         kvdb.open()
@@ -51,7 +51,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_close(self):
         """Test that close() disconnects from database"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         kvdb.open()
         self.assertIsNotNone(kvdb._conn)  # pyright: ignore[reportPrivateUsage]
         kvdb.close()
@@ -59,7 +59,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_context_manager(self):
         """Test KVDB as context manager"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         with kvdb as db:
             self.assertIsNotNone(db._conn)  # pyright: ignore[reportPrivateUsage]
             self.assertIs(db, kvdb)
@@ -67,7 +67,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_execute_without_connection_raises_error(self):
         """Test that _execute raises ValueError when not connected"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         with self.assertRaises(ValueError) as context:
             kvdb._execute("SELECT 1")  # pyright: ignore[reportPrivateUsage]
         self.assertIn("KVDB is closed", str(context.exception))
@@ -75,13 +75,13 @@ class TestKVDB(unittest.TestCase):
     def test_invalid_table_name(self):
         """Test that invalid table names are rejected"""
         with self.assertRaises(ValueError) as context:
-            kvdb = KVDB(self.db_path, "123invalid")
+            kvdb = KVDB(self.db_path, "123invalid", b"")
             kvdb.open()
         self.assertIn("Invalid table name", str(context.exception))
 
     def test_create_table(self):
         """Test table creation"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             # Verify table exists by checking schema
             cursor = kvdb._execute(  # pyright: ignore[reportPrivateUsage]
@@ -92,13 +92,13 @@ class TestKVDB(unittest.TestCase):
 
     def test_create_table_idempotent(self):
         """Test that creating table multiple times doesn't raise error"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.create_table()  # Should not raise
 
     def test_delete_table(self):
         """Test table deletion"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.delete_table()
             # Verify table is deleted
@@ -110,7 +110,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_setitem_getitem_bytes(self):
         """Test setting and getting bytes values"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"test_key"
@@ -124,7 +124,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_setitem_getitem_dict(self):
         """Test setting and getting non-bytes (dict) values"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"test_key"
@@ -139,7 +139,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_setitem_getitem_list(self):
         """Test setting and getting list values"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"test_list"
@@ -154,7 +154,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_setitem_overwrite(self):
         """Test that setting same key overwrites value"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"test_key"
@@ -171,7 +171,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_getitem_missing_key_raises_keyerror(self):
         """Test that accessing missing key raises KeyError"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             with self.assertRaises(KeyError):
@@ -180,7 +180,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_delitem(self):
         """Test deleting a key"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"test_key"
@@ -198,7 +198,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_contains(self):
         """Test __contains__ method"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"test_key"
@@ -212,7 +212,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_iter_keys(self):
         """Test iterating over keys"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             keys = [b"key1", b"key2", b"key3"]
@@ -227,7 +227,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_len(self):
         """Test __len__ method"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             self.assertEqual(len(kvdb), 0)
@@ -240,7 +240,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_values_iteration(self):
         """Test iterating over values"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             values = [b"value1", b"value2", b"value3"]
@@ -255,21 +255,17 @@ class TestKVDB(unittest.TestCase):
 
     def test_setitem_invalid_value_raises_error(self):
         """Test that non-serializable values raise ValueError"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
 
-            # Create an object that msgpack cannot serialize
-            class NonSerializable:
-                pass
-
-            with self.assertRaises(TypeError) as context:
-                kvdb[b"test"] = NonSerializable()
-            self.assertIn("can not serialize", str(context.exception))
+            with self.assertRaises(ValueError) as context:
+                kvdb[b"test"] = os
+            self.assertIn("cannot be serialized", str(context.exception))
 
     def test_begin_commit(self):
         """Test transaction management"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"key"] = b"value"
@@ -281,7 +277,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_rollback(self):
         """Test transaction rollback"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"key"] = b"value1"
@@ -297,7 +293,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_purge(self):
         """Test database purge"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"key"] = b"value"
@@ -311,7 +307,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_repr_open(self):
         """Test __repr__ for open KVDB"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             repr_str = repr(kvdb)
             self.assertIn("Open", repr_str)
             self.assertIn(str(self.db_path), repr_str)
@@ -319,7 +315,7 @@ class TestKVDB(unittest.TestCase):
 
     def test_repr_closed(self):
         """Test __repr__ for closed KVDB"""
-        kvdb = KVDB(self.db_path, self.table)
+        kvdb = KVDB(self.db_path, self.table, b"")
         repr_str = repr(kvdb)
         self.assertIn("Closed", repr_str)
         self.assertIn(str(self.db_path), repr_str)
@@ -329,20 +325,20 @@ class TestKVDB(unittest.TestCase):
         table1 = "table1"
         table2 = "table2"
 
-        with KVDB(self.db_path, table1) as kvdb1:
+        with KVDB(self.db_path, table1, b"") as kvdb1:
             kvdb1.create_table()
             kvdb1.begin()
             kvdb1[b"key1"] = b"value1"
             kvdb1.commit()
 
-        with KVDB(self.db_path, table2) as kvdb2:
+        with KVDB(self.db_path, table2, b"") as kvdb2:
             kvdb2.create_table()
             kvdb2.begin()
             kvdb2[b"key2"] = b"value2"
             kvdb2.commit()
 
         # Verify data isolation
-        with KVDB(self.db_path, table1) as kvdb1:
+        with KVDB(self.db_path, table1, b"") as kvdb1:
             kvdb1.begin()
             self.assertEqual(kvdb1[b"key1"], b"value1")
             with self.assertRaises(KeyError):
@@ -359,7 +355,7 @@ class TestKVDBView(unittest.TestCase):
         self.db_path = Path(self.temp_dir.name) / "test.db"
         self.table = "test_table"
         # Create and populate database
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"key1"] = b"value1"
@@ -373,19 +369,19 @@ class TestKVDBView(unittest.TestCase):
 
     def test_init(self):
         """Test KVDBView initialization"""
-        view = KVDBView(self.db_path, self.table)
+        view = KVDBView(self.db_path, self.table, b"")
         self.assertEqual(view.db_path, self.db_path)
         self.assertEqual(view.table, self.table)
 
     def test_contains(self):
         """Test __contains__ method"""
-        view = KVDBView(self.db_path, self.table)
+        view = KVDBView(self.db_path, self.table, b"")
         self.assertIn(b"key1", view)
         self.assertNotIn(b"nonexistent", view)
 
     def test_iter(self):
         """Test iterating over view (yields values)"""
-        view = KVDBView(self.db_path, self.table)
+        view = KVDBView(self.db_path, self.table, b"")
         values = list(view)
         self.assertEqual(len(values), 3)
         self.assertIn(b"value1", values)
@@ -394,12 +390,12 @@ class TestKVDBView(unittest.TestCase):
 
     def test_len(self):
         """Test __len__ method"""
-        view = KVDBView(self.db_path, self.table)
+        view = KVDBView(self.db_path, self.table, b"")
         self.assertEqual(len(view), 3)
 
     def test_repr(self):
         """Test __repr__ method"""
-        view = KVDBView(self.db_path, self.table)
+        view = KVDBView(self.db_path, self.table, b"")
         repr_str = repr(view)
         self.assertIn("ReadOnlyView", repr_str)
         self.assertIn(str(self.db_path), repr_str)
@@ -407,11 +403,11 @@ class TestKVDBView(unittest.TestCase):
 
     def test_view_reflects_underlying_changes(self):
         """Test that view reflects changes to underlying database"""
-        view = KVDBView(self.db_path, self.table)
+        view = KVDBView(self.db_path, self.table, b"")
         initial_len = len(view)
 
         # Add new item to database
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.begin()
             kvdb[b"key4"] = b"value4"
             kvdb.commit()
@@ -436,7 +432,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_large_value(self):
         """Test storing large values"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"large_key"
@@ -450,7 +446,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_special_bytes_as_key(self):
         """Test using special bytes as keys"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             keys = [b"\x00\x01\x02", b"\xff\xfe\xfd", b"\n\r\t"]
@@ -465,7 +461,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_unicode_in_serialized_value(self):
         """Test storing unicode strings (serialized)"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"unicode_key"
@@ -480,7 +476,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_complex_nested_structure(self):
         """Test deeply nested data structures"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             key = b"complex"
@@ -497,7 +493,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_pathlike_db_path(self):
         """Test using pathlib.Path as db_path"""
-        with KVDB(Path(self.db_path), self.table) as kvdb:
+        with KVDB(Path(self.db_path), self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"key"] = b"value"
@@ -506,7 +502,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_string_db_path(self):
         """Test using string as db_path"""
-        with KVDB(str(self.db_path), self.table) as kvdb:
+        with KVDB(str(self.db_path), self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"key"] = b"value"
@@ -515,7 +511,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_empty_bytes_key(self):
         """Test using empty bytes as key"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b""] = b"empty_key_value"
@@ -527,7 +523,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
 
     def test_none_value(self):
         """Test storing None value (must be serialized)"""
-        with KVDB(self.db_path, self.table) as kvdb:
+        with KVDB(self.db_path, self.table, b"") as kvdb:
             kvdb.create_table()
             kvdb.begin()
             kvdb[b"none_key"] = None
@@ -543,7 +539,7 @@ class TestKVDBEdgeCases(unittest.TestCase):
         valid_names = ["table_name", "table-name", "Table_Name", "TABLE123"]
         for table_name in valid_names:
             db_path = Path(self.temp_dir.name) / f"{table_name}.db"
-            with KVDB(db_path, table_name) as kvdb:
+            with KVDB(db_path, table_name, b"") as kvdb:
                 kvdb.create_table()
                 kvdb.begin()
                 kvdb[b"key"] = b"value"
