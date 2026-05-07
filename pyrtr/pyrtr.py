@@ -388,13 +388,12 @@ async def run_cache(  # pylint: disable=too-many-arguments
         )
 
     # Initialize SLURM
+    slurm_instances: dict[int, SLURMDatasource | None]
     if slurm_location is not None:
-        if data_location is None:
-            raise ValueError("data_location is required for RPKICLIENT datasource")
         if cache_location is None:
-            raise ValueError("cache_location is required for RPKICLIENT datasource")
-
-        slurm_instances: dict[int, SLURMDatasource | None] = {
+            raise ValueError("cache_location is required for the SLURM datasource")
+        
+        slurm_instances = {
             0: SLURM(
                 version=0,
                 data_location=slurm_location,
@@ -415,9 +414,9 @@ async def run_cache(  # pylint: disable=too-many-arguments
     match datasource:
         case "RPKICLIENT":
             if data_location is None:
-                raise ValueError("data_location is required for RPKICLIENT datasource")
+                raise ValueError("data_location is required for the RPKICLIENT datasource")
             if cache_location is None:
-                raise ValueError("cache_location is required for RPKICLIENT datasource")
+                raise ValueError("cache_location is required for the RPKICLIENT datasource")
             datasource_instances: dict[int, RPKIDatasource] = {
                 0: RPKIClient(
                     version=0,

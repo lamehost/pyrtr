@@ -38,6 +38,7 @@ pyRTR has no configuration files and takes no CLI arguments. Parameters can be s
 |  DATA_LOCATION |  Path to the RPKI-client JSON file | rpki_client.json |
 |  SLURM_LOCATION | Path to the SLURM JSON file | slurm.json |
 |  CACHE_LOCATION | Path to the temporary cache directory | cache |
+|  DISABLE_CACHE_ENCRYPTION | Disable local cache encryption (Don't use it in production) | False |
 |  RELOAD | The amount of seconds after which the RPKIclient JSON file is realoaded | 900 |
 |  REFRESH |  RTR Refresh Interval in seconds * | 3600 |
 |  RETRY |  RTR Retry Interval in seconds * | 600 |
