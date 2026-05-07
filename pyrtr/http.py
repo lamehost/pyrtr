@@ -151,8 +151,11 @@ async def http_server(
 
         for rpki_instance in rpki_instances.values():
             async for line in rpki_instance.dump():
-                await response.write(orjson.dumps(line) + b"\n")  # pylint: disable=no-member
-                await asyncio.sleep(0)
+                try:
+                    await response.write(orjson.dumps(line) + b"\n")  # pylint: disable=no-member
+                    await asyncio.sleep(0)
+                except ConnectionResetError:
+                    break
 
         return response
 
