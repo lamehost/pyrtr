@@ -330,13 +330,13 @@ class RTRSpeaker(Speaker):
             The serialized PDU to send
         """
         if self.version is None:
-            raise InternalError("Inconsistent version state.")
+            raise InternalError("Inconsistent version state.")  # NOSONAR
 
         if self.transport is None:
-            raise BrokenPipeError("Transport is not ready")
+            raise BrokenPipeError("Transport is not ready")  # NOSONAR
 
         if not isinstance(self.transport, asyncio.Transport):
-            raise TypeError("Unable to write to a non writable transport")
+            raise TypeError("Unable to write to a non writable transport")  # NOSONAR
 
         self.transport.write(data)
 
