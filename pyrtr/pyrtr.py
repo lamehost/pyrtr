@@ -6,142 +6,30 @@ import logging
 import os
 import random
 import secrets
-from typing import TypedDict
-
-import orjson
-from aiohttp import web
-from prometheus_client.aiohttp import make_aiohttp_handler as prometheus_aiohttp_handler
 
 from pyrtr import prometheus
 from pyrtr.datasources import SLURM, RPKIClient, RPKIDatasource, SLURMDatasource
+from pyrtr.http import http_server
 from pyrtr.rtr.cache import Cache
 
 logger = logging.getLogger(__name__)
 
 
-class DatasourceStats(TypedDict):
-    """
-    Defines the set of metadata describing the status of the Datasource
-    """
-
-    last_update: str | None
-
-
-class Status(TypedDict):
-    """
-    Defines the set of metadata describing the application status
-    """
-
-    datasources: dict[str, DatasourceStats]
-    sessions: dict[str, int | None]
-    pid: int
-
-
-async def http_server(
-    host: str,
-    port: int,
-    sessions: dict[int, int],
-    datasource_instances: dict[int, RPKIDatasource],
-    cache_registry: dict[str, Cache],
-) -> None:
-    """
-    Runs the HTTP server providing three endpoints:
-     - /clients: List of connected clients
-     - /healthz: Application status
-     - /metrics: Prometheus metrics
-     - /dumps: Dumps of the current data in the datasources
-
-    Arguments:
-    ----------
-    host: str
-        The host to bind to
-    port: int
-        The TCP port to bind to
-    sessions: dict[int, int]
-        The session IDs
-    datasource_instances: dict[int, RPKIDatasource]
-        RPKI Datasource instances (one per version)
-    cache_registry: dict[str, Cache]
-        The Cache registry
-    """
-
-    async def get_clients(_: web.Request) -> web.Response:  # NOSONAR
-        clients = [
-            {"client": client_id, "version": f"V{cache.version}"}
-            for client_id, cache in cache_registry.items()
-        ]
-        return web.json_response(clients)
-
-    async def get_health(_: web.Request) -> web.Response:  # NOSONAR
-        try:
-            v0_last_update = datasource_instances[0].last_update
-            v0_session = sessions[0]
-        except KeyError:
-            v0_last_update = None
-            v0_session = None
-
-        try:
-            v1_last_update = datasource_instances[1].last_update
-            v1_session = sessions[1]
-        except KeyError:
-            v1_last_update = None
-            v1_session = None
-
-        status: Status = {
-            "datasources": {
-                "V0": {"last_update": v0_last_update},
-                "V1": {"last_update": v1_last_update},
-            },
-            "sessions": {"V0": v0_session, "V1": v1_session},
-            "pid": os.getpid(),
-        }
-
-        return web.json_response(status)
-
-    async def get_dumps(request: web.Request) -> web.StreamResponse:  # NOSONAR
-        response = web.StreamResponse()
-        response.headers["Content-Type"] = "application/jsonl"
-        await response.prepare(request)
-
-        for datasource in datasource_instances.values():
-            async for line in datasource.dump():
-                await response.write(orjson.dumps(line) + b"\n")  # pylint: disable=no-member
-                await asyncio.sleep(0)
-
-        return response
-
-    webapp = web.Application()
-    webapp.router.add_get("/clients", get_clients, allow_head=True)
-    webapp.router.add_get("/healthz", get_health, allow_head=True)
-    webapp.router.add_get("/metrics", prometheus_aiohttp_handler(), allow_head=True)
-    webapp.router.add_get("/dumps", get_dumps, allow_head=True)
-
-    runner = web.AppRunner(webapp)
-    await runner.setup()
-    site = web.TCPSite(runner, host, port)
-
-    logger.info("Web server listening at http://%s:%d/", host, port)
-    await site.start()
-
-    while True:
-        await asyncio.sleep(60)
-
-
 async def datasource_reloader(
-    datasource_instances: dict[int, RPKIDatasource],
+    rpki_instances: dict[int, RPKIDatasource],
     slurm_instances: dict[int, SLURMDatasource | None],
     cache_registry: dict[str, Cache],
     sleep: int = 900,
 ) -> None:
     """
-    Reloads the content of the Datasource, and notify clients of changes.
+    Reloads the content of the datasources and notify clients of changes.
     Holds `sleeps` seconds between every attempt
 
     Arguments:
     ----------
-    datasource_instances: dict[int, Datasource]
+    rpki_instances: dict[int, RPKIDatasource]
         Datasource instances (one per version)
-    slurm_instances: dict[int, SLURM | None]
+    slurm_instances: dict[int, SLURMDatasource | None]
         SLURM instances (one per version)
     cache_registry: dict[str, Cache]
         The Cache registry
@@ -150,12 +38,12 @@ async def datasource_reloader(
     """
     while True:
         # There is one datasource per version
-        for datasource in datasource_instances.values():
+        for rpki_instance in rpki_instances.values():
             # Reload SLURM
-            slurm = slurm_instances.get(datasource.version)
+            slurm = slurm_instances.get(rpki_instance.version)
             if slurm is not None:
                 try:
-                    # Load new snapshots of the SLURM datasource
+                    # Load a new snapshot of the SLURM datasource
                     await slurm.reload()
                 except Exception as error:  # pylint: disable=broad-exception-caught
                     logger.exception(
@@ -164,17 +52,17 @@ async def datasource_reloader(
                     continue
 
             try:
-                # Load new snapshots of the RPKI datasource
-                await datasource.reload()
+                # Load a new snapshot of the RPKI datasource
+                await rpki_instance.reload()
             except Exception as error:  # pylint: disable=broad-exception-caught
-                logger.exception("Unable to reload the data source: %s", error, exc_info=True)
+                logger.exception("Unable to reload the RPKI data source: %s", error, exc_info=True)
                 continue
 
             logger.info(
-                "Data source reloaded for v%d: %d VRPs, %d BGPsec Keys",
-                datasource.version,
-                len(datasource.vrps),
-                len(datasource.router_keys),
+                "Data sources reloaded for v%d: %d VRPs, %d BGPsec Keys",
+                rpki_instance.version,
+                len(rpki_instance.vrps),
+                len(rpki_instance.router_keys),
             )
 
             # Notify clients of changes
@@ -186,7 +74,7 @@ async def datasource_reloader(
                     # cache_registry might change outside the function while we iterate through it
                     continue
 
-                if datasource.version != cache.version:
+                if rpki_instance.version != cache.version:
                     # Do not send notifications if the session is different.
                     # This should never happen, since the session ID is negotiated during the
                     # connection phase, but we check it just in case.
@@ -209,7 +97,7 @@ async def datasource_reloader(
 
             await asyncio.sleep(0)
 
-        logger.debug("RPKI Datasource will be reloaded in: %d seconds", sleep)
+        logger.debug("Datasources will be reloaded in: %d seconds", sleep)
         await asyncio.sleep(sleep)
 
 
@@ -278,7 +166,7 @@ async def rtr_server(  # pylint: disable=too-many-arguments
         The TCP port to bind to
     sessions: dict[int, int]
         The session IDs (one per version)
-    datasource_instances: dict[int, RPKIDatasource]
+    datasources: dict[int, RPKIDatasource]
         RPKI Datasources instances (one per version)
     cache_registry: Cache
         The RTR Cache registry
@@ -364,10 +252,10 @@ async def run_cache(  # pylint: disable=too-many-arguments
         The path pointing to the datasource file. Default: None
     cache_location: str | os.PathLike[str] | None
         The path pointing to the cache directory. Default: None
-    disable_cache_encryption: bool
-        Whether to disable cache encryption. Default: False
     slurm_location: str | os.PathLike[str] | None
         The path pointing to the SLURM file. Default: None
+    disable_cache_encryption: bool
+        Whether to disable cache encryption. Default: False
     refresh: int
         Refresh Interval in seconds. Default: 3600
     retry: int
@@ -378,21 +266,21 @@ async def run_cache(  # pylint: disable=too-many-arguments
 
     # Set encryption key
     encryption_key: bytes | None = None
-    if not disable_cache_encryption:
-        encryption_key = secrets.token_bytes(32)
-        logger.debug("Cache encryption enabled. Encryption key: %s", encryption_key.hex())
-    else:
+    if disable_cache_encryption:
         logger.warning(
             "Cache encryption disabled. "
             "This is dangerous and should only be used for testing purposes."
         )
+    else:
+        encryption_key = secrets.token_bytes(32)
+        logger.debug("Cache encryption enabled. Encryption key: %s", encryption_key.hex())
 
-    # Initialize SLURM
+    # Initialize the SLURM datasources
     slurm_instances: dict[int, SLURMDatasource | None]
     if slurm_location is not None:
         if cache_location is None:
             raise ValueError("cache_location is required for the SLURM datasource")
-        
+
         slurm_instances = {
             0: SLURM(
                 version=0,
@@ -410,14 +298,15 @@ async def run_cache(  # pylint: disable=too-many-arguments
     else:
         slurm_instances = {0: None, 1: None}
 
-    # Initialize the datasources
+    # Initialize the RPKI datasources
+    rpki_instances: dict[int, RPKIDatasource]
     match datasource:
         case "RPKICLIENT":
             if data_location is None:
                 raise ValueError("data_location is required for the RPKICLIENT datasource")
             if cache_location is None:
                 raise ValueError("cache_location is required for the RPKICLIENT datasource")
-            datasource_instances: dict[int, RPKIDatasource] = {
+            rpki_instances = {
                 0: RPKIClient(
                     version=0,
                     data_location=data_location,
@@ -445,17 +334,17 @@ async def run_cache(  # pylint: disable=too-many-arguments
     # The datasource_reloader coroutine is always executed, while for the others it depends on the
     # config.
     coroutines = [
-        datasource_reloader(datasource_instances, slurm_instances, cache_registry, reload)
+        datasource_reloader(rpki_instances, slurm_instances, cache_registry, reload)
     ]
 
     if rtr_port > 0:
-        # Execute the rtr_server if rtr_port is larger than 0
+        # Execute the rtr_server if rtr_port is bigger than 0
         coroutines.append(
             rtr_server(
                 host,
                 rtr_port,
                 sessions,
-                datasource_instances,
+                rpki_instances,
                 cache_registry,
                 refresh=refresh,
                 retry=retry,
@@ -464,9 +353,9 @@ async def run_cache(  # pylint: disable=too-many-arguments
         )
 
     if http_port > 0:
-        # Execute the http_server is http_port is larger than 0
+        # Execute the http_server if http_port is bigger than 0
         coroutines.append(
-            http_server(host, http_port, sessions, datasource_instances, cache_registry)
+            http_server(host, http_port, sessions, rpki_instances, cache_registry)
         )
 
     await asyncio.gather(*coroutines)
