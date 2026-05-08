@@ -81,7 +81,7 @@ async def http_server(
         ----------
         _: web.Request
             Ignored
-        
+
         Returns:
         --------
         web.Response: The aiohttp Response with the JSON text

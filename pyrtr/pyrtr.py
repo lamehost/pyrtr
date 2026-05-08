@@ -333,9 +333,7 @@ async def run_cache(  # pylint: disable=too-many-arguments
 
     # The datasource_reloader coroutine is always executed, while for the others it depends on the
     # config.
-    coroutines = [
-        datasource_reloader(rpki_instances, slurm_instances, cache_registry, reload)
-    ]
+    coroutines = [datasource_reloader(rpki_instances, slurm_instances, cache_registry, reload)]
 
     if rtr_port > 0:
         # Execute the rtr_server if rtr_port is bigger than 0
@@ -354,8 +352,6 @@ async def run_cache(  # pylint: disable=too-many-arguments
 
     if http_port > 0:
         # Execute the http_server if http_port is bigger than 0
-        coroutines.append(
-            http_server(host, http_port, sessions, rpki_instances, cache_registry)
-        )
+        coroutines.append(http_server(host, http_port, sessions, rpki_instances, cache_registry))
 
     await asyncio.gather(*coroutines)
