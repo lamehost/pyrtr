@@ -53,7 +53,7 @@ async def http_server(
     cache_registry: dict[str, Cache],
 ) -> None:
     """
-    Runs the HTTP server providing three endpoints:
+    Runs the HTTP server providing four endpoints:
      - /clients: List of connected clients
      - /healthz: Application status
      - /metrics: Prometheus metrics
