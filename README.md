@@ -5,9 +5,9 @@
 
 ## Features
  - RPKI-client backend
- - HTTP health and connected clients endpoints (some endpoints might be broken)
+ - HTTP health and connected clients endpoints
  - SLURM
- - Prometheus metrics (largely TODO)
+ - Prometheus metrics (largely in TODO)
 
 ## Tested with
  - FRR
